@@ -57,6 +57,8 @@ Every run publishes two pages:
 * `index.html`: the **search page**. Search any place, type coordinates, use your location or tap the map, and get a satellite score (1 / 0.5 / 0) with confidence and reasons.
   * Each run builds a 1 km cloud-and-terrain grid of all India (29 tiles of 5° × 5°). The page loads only the tile it needs and scores it in the browser, using the same rules as the Python code (`national.score_cells`).
   * Settings such as snow detection and fog mode are chosen per 5° tile, not per point. This is an approximation.
+* **Route mode** on the same page: add stops A → B → … The page samples every kilometre along the straight legs, scores each corridor (1–3 km each side), and rates the journey by its weakest stretch. A blocked stretch of 2 km or more gives 0; any partly obscured stretch gives 0.5; otherwise 1. It also shows a terrain profile with cloud tops and lists the problem stretches. The Python reference is `national.score_route`.
+* Location input accepts place names, coordinates (decimal or degrees/minutes/seconds) and full Google Maps links. Apartment names are often missing from OpenStreetMap, so paste coordinates for those.
 * `sites.html`: the **key sites** at full 30 m detail.
 
 Command: `passcast national --satellite himawari --out site`. Terrain comes from Copernicus GLO-90; it is built once and then cached.

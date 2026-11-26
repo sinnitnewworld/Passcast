@@ -71,7 +71,7 @@ h2{font-size:15px;margin:20px 0 6px}
 <div class="wrap">
  <section class="left">
   <div class="search">
-   <input id="q" type="search" placeholder="Search a place, or type lat, long" autocomplete="off" aria-label="Search location">
+   <input id="q" type="search" placeholder="Place, coordinates, or a Google Maps link" autocomplete="off" aria-label="Search location">
    <button id="go" class="pri" aria-label="Search">Search</button>
    <div id="results" role="listbox"></div>
   </div>
@@ -128,8 +128,20 @@ initMap();
 
 /* ---------- geocoding ---------- */
 const LL=/^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
-async function search(){const q=$("#q").value.trim();if(!q)return;const m=q.match(LL);
- if(m){hideResults();return pick(+m[1],+m[2],null,true)}
+function dms(d,m,s,h){let v=(+d)+(+m||0)/60+(+s||0)/3600;if(/[SW]/i.test(h||""))v=-v;return v}
+function parseLoc(q){q=q.trim();let m;
+ if(/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(q))return {err:"Short Google links can't be opened here. In Google Maps, long-press the spot and copy the coordinates instead."};
+ if(m=q.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/))return {lat:+m[1],lon:+m[2]};
+ if(m=q.match(/[?&](?:q|query|ll|destination|center)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i))return {lat:+m[1],lon:+m[2]};
+ if(m=q.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/))return {lat:+m[1],lon:+m[2]};
+ if(m=q.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*°?\s*([NS])?\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*°?\s*([EW])?\s*$/i))return {lat:(/S/i.test(m[2]||"")?-1:1)*+m[1],lon:(/W/i.test(m[4]||"")?-1:1)*+m[3]};
+ if(m=q.match(/(\d{1,2})°\s*(\d{1,2})['′]\s*(\d{1,2}(?:\.\d+)?)?["″]?\s*([NS])[,\s]+(\d{1,3})°\s*(\d{1,2})['′]\s*(\d{1,2}(?:\.\d+)?)?["″]?\s*([EW])/i))
+  return {lat:dms(m[1],m[2],m[3],m[4]),lon:dms(m[5],m[6],m[7],m[8])};
+ return null}
+
+async function search(){const q=$("#q").value.trim();if(!q)return;const p=parseLoc(q);
+ if(p&&p.err)return showResults(`<div>${esc(p.err)}</div>`);
+ if(p){hideResults();return pick(p.lat,p.lon,null,true)}
  showResults('<div><span class="spin"></span>Searching…</div>');
  let items=[],netFail=0;
  try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=in&q=${encodeURIComponent(q)}`);
@@ -137,7 +149,7 @@ async function search(){const q=$("#q").value.trim();if(!q)return;const m=q.matc
  if(!items.length){try{const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=6&countryCode=IN&name=${encodeURIComponent(q)}`);
   items=((await r.json()).results||[]).map(x=>({name:x.name,desc:[x.admin2,x.admin1,x.country].filter(Boolean).join(", "),lat:x.latitude,lon:x.longitude}))}catch(e){netFail++}}
  if(!items.length&&netFail>=2)return showResults('<div><b>Can\'t reach the internet from here.</b> If you opened this inside a chat preview, open the hosted link or the downloaded file in Chrome/Safari instead.</div>');
- if(!items.length)return showResults('<div>No match. Try a nearby town, or type coordinates like <b>13.37, 77.68</b>.</div>');
+ if(!items.length)return showResults('<div>No match. Apartment and office names are often missing from the free map database. In Google Maps, long-press the spot, copy the coordinates and paste them here (or tap the map).</div>');
  showResults(items.map((x,i)=>`<div role="option" data-i="${i}"><b>${esc(x.name)}</b><small>${esc(x.desc)}</small></div>`).join(""));
  document.querySelectorAll("#results [data-i]").forEach(el=>el.onclick=()=>{const x=items[+el.dataset.i];hideResults();pick(x.lat,x.lon,x.name,false)})}
 function showResults(h){$("#results").innerHTML=h;$("#results").style.display="block"}

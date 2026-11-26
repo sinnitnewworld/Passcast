@@ -298,3 +298,49 @@ def score_cells(rec, lat, lon, lat0, lon0, radius_m, manifest, now=None):
     if score == 1.0 and label == "LOW":
         score = 0.5
     return {"score": score, "obscured": round(frac, 3), "confidence": round(c, 2), "label": label}
+
+
+def score_route(recs: dict, stops, half_width_m, manifest):
+    """Route rating (the web page implements the same rules).
+
+    stops: [(lat, lon), ...]; recs: {tile_key: unpacked tile}.
+    Samples every ~1 km along straight legs and scores each sample's corridor.
+    Route = 0 if any blocked stretch (>partial_max) is >= 2 km long,
+            0.5 if any partially obscured or short blocked stretch, else 1.
+    """
+    def hav(a, b):
+        la1, lo1, la2, lo2 = map(math.radians, (a[0], a[1], b[0], b[1]))
+        x = math.sin((la2 - la1) / 2) ** 2 + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2
+        return 2 * 6371 * math.asin(math.sqrt(x))
+    samples, dist = [], 0.0
+    for l in range(len(stops) - 1):
+        a, b = stops[l], stops[l + 1]
+        d = hav(a, b); n = max(1, math.ceil(d))
+        for k in range(0 if l == 0 else 1, n + 1):
+            f = k / n
+            samples.append((a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, dist + d * f))
+        dist += d
+    th = manifest["thresholds"]
+    st = []
+    for la, lo, km in samples:
+        k = key(int(la // 5 * 5), int(lo // 5 * 5))
+        if k not in recs:
+            st.append(("nd", km)); continue
+        r = score_cells(recs[k], la, lo, int(la // 5 * 5), int(lo // 5 * 5), half_width_m, manifest)
+        if r.get("score") is None:
+            st.append(("nd", km)); continue
+        o = r["obscured"]
+        st.append((0.0 if o > th["partial_max"] else 0.5 if o > th["clear_max"] else 1.0, km))
+    runs = []
+    for s, km in st:
+        if runs and runs[-1][0] == s:
+            runs[-1][2] = km
+        else:
+            runs.append([s, km, km])
+    blocked = [r for r in runs if r[0] == 0.0 and max(r[2] - r[1], 1) >= 2]
+    partial = [r for r in runs if r[0] == 0.5 or (r[0] == 0.0 and max(r[2] - r[1], 1) < 2)]
+    score = 0.0 if blocked else 0.5 if partial else 1.0
+    nd = sum(1 for s, _ in st if s == "nd") / max(len(st), 1)
+    if nd > 0.2 and score == 1.0:
+        score = 0.5
+    return {"score": score, "km": round(dist, 1), "blocked": len(blocked), "partial": len(partial), "no_data": round(nd, 3)}

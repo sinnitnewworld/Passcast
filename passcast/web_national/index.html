@@ -10,13 +10,13 @@
 <style>
 /*
 VOICE: an operations console a met officer trusts: terse, exact, honest about uncertainty.
-IDEA: a survey map with the satellite's cloud laid over it and a score stamp for any point.
-PICTURE: the map with the cloud overlay and corridor ring; the 1 / 0.5 / 0 stamp beside it.
+IDEA: a survey map with the satellite's cloud laid over it, a score stamp for a point, a strip chart for a route.
+PICTURE: the map with cloud overlay and corridor; the 1 / 0.5 / 0 stamp; the route's terrain profile with cloud bands.
 COLOUR and TYPE: survey-map land/sea/ink, magenta accent; green/amber/red only for scores. Overpass.
 LAYOUT: search + map left, result right on wide screens; one column on phones.
 */
 :root{color-scheme:light dark;--bg:light-dark(#fbfbf2,#0d1c24);--panel:light-dark(#fff,#132a35);--line:light-dark(#dfe3d6,#22404d);
---ink:light-dark(#13242e,#e8f1f4);--mute:light-dark(#5b6b73,#93a9b2);--sea:light-dark(#bfe3ee,#173847);--accent:#d6127e;--s1:#1f9d55;--s05:#d99300;--s0:#d64545}
+--ink:light-dark(#13242e,#e8f1f4);--mute:light-dark(#5b6b73,#93a9b2);--sea:light-dark(#bfe3ee,#173847);--accent:#d6127e;--s1:#1f9d55;--s05:#d99300;--s0:#d64545;--nd:#8a8a8a}
 :root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;min-width:0}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Overpass,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:clip}
@@ -25,17 +25,23 @@ h1{margin:0;font-size:22px;font-weight:800}h1 span{font-weight:400;font-size:14p
 .img{font-size:13px;color:var(--mute)}.img a{color:var(--accent);font-weight:600}
 .wrap{max-width:1300px;margin:0 auto;padding:14px max(4vw,16px) 40px;display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
 @media(min-width:1000px){.wrap{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:start}}
+.tabs{display:flex;gap:6px;margin-bottom:10px}.tabs button{flex:1}.tabs button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .search{position:relative;display:flex;gap:8px}
 input,select,button{font:inherit;font-size:16px;color:var(--ink)}
 input,select{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px;width:100%}
 button{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--panel);padding:8px 14px;cursor:pointer;font-weight:600}
 button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
 :focus-visible{outline:3px solid var(--accent);outline-offset:1px}
-#results{position:absolute;top:50px;left:0;right:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,.2);display:none;max-height:320px;overflow:auto}
+#results{position:absolute;top:50px;left:0;right:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,.2);display:none;max-height:340px;overflow:auto}
 #results div{padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer}#results div:hover{background:var(--sea)}#results small{display:block;color:var(--mute);font-size:13px}
+.hint{font-size:13px;color:var(--mute);margin-top:6px}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}.row>*{flex:1 1 150px}
-#map{height:min(62vh,560px);min-height:320px;border-radius:12px;margin-top:10px;border:1px solid var(--line);background:var(--sea)}
+#map{height:min(60vh,540px);min-height:320px;border-radius:12px;margin-top:10px;border:1px solid var(--line);background:var(--sea)}
 .lab{font-size:13px;color:var(--mute)}
+#stops{margin-top:10px;display:grid;gap:6px}
+.stop{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 6px 6px 12px}
+.stop b{width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--bg);display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex:none}
+.stop span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.stop button{min-height:36px;padding:4px 10px;font-size:14px}
 .place{font-size:24px;font-weight:800;line-height:1.15;margin:0}.meta{font-size:14px;color:var(--mute)}
 .stamp{display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:center;border-radius:14px;padding:14px 16px;color:#fff;margin-top:12px}
 .stamp .n{font-size:44px;font-weight:800;line-height:1;width:96px;height:96px;border:3px solid rgba(255,255,255,.85);border-radius:12px;display:flex;align-items:center;justify-content:center}
@@ -43,10 +49,11 @@ button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}@media(max-width:560px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .tiles div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}.tiles b{display:block;font-size:18px;white-space:nowrap}.tiles span{font-size:13px;color:var(--mute)}
 h2{font-size:15px;margin:18px 0 6px}ul{margin:0 0 0 18px;padding:0}li{margin:3px 0}
+.fig{position:relative;height:220px;background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-top:8px}.fig svg{position:absolute;inset:0;width:100%;height:100%}
 .empty{background:var(--panel);border:1px dashed var(--line);border-radius:14px;padding:26px;text-align:center;color:var(--mute)}
 .err{background:var(--panel);border:1px solid var(--s0);border-radius:12px;padding:14px;margin-top:10px}
 .note{font-size:13px;color:var(--mute);border-top:1px solid var(--line);margin-top:18px;padding-top:10px}
-.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--mute);margin-top:6px}.sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px;border:1px solid var(--line)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--mute);margin-top:6px}.sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px;border:1px solid var(--mute)}
 .spin{display:inline-block;width:18px;height:18px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:s 1s linear infinite;vertical-align:-4px;margin-right:8px}
 @keyframes s{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.spin{animation:none}}
 .leaflet-container{font:inherit}
@@ -56,19 +63,24 @@ h2{font-size:15px;margin:18px 0 6px}ul{margin:0 0 0 18px;padding:0}li{margin:3px
 <header><h1>PassCast<span>satellite flyability, anywhere in India</span></h1><div class="img" id="img">Loading latest image…</div></header>
 <div class="wrap">
  <section>
+  <div class="tabs" role="tablist"><button id="tPoint" class="on" role="tab">Single point</button><button id="tRoute" role="tab">Route (A → B → …)</button></div>
   <div class="search">
-   <input id="q" type="search" placeholder="Search a place, pass or helipad, or type lat, long" autocomplete="off" aria-label="Search location">
+   <input id="q" type="search" placeholder="Place, coordinates, or a Google Maps link" autocomplete="off" aria-label="Search location">
    <button id="go" class="pri">Search</button><div id="results"></div>
   </div>
+  <div class="hint">Can't find your building? In Google Maps, long-press the spot, copy the coordinates (e.g. <b>12.9236, 77.5047</b>) and paste them here.</div>
   <div class="row">
    <button id="me">Use my location</button>
-   <label class="lab">Corridor radius<select id="rad"><option value="1000">1 km</option><option value="3000" selected>3 km</option><option value="5000">5 km</option><option value="10000">10 km</option></select></label>
-   <label class="lab"><input type="checkbox" id="ov" checked style="width:auto;min-height:0;margin-right:6px">Show cloud layer</label>
+   <label class="lab" id="radWrap">Corridor radius<select id="rad"><option value="1000">1 km</option><option value="3000" selected>3 km</option><option value="5000">5 km</option><option value="10000">10 km</option></select></label>
+   <label class="lab" id="rwWrap" hidden>Route corridor (each side)<select id="rw"><option value="1000">1 km</option><option value="2000" selected>2 km</option><option value="3000">3 km</option></select></label>
+   <label class="lab"><input type="checkbox" id="ov" checked style="width:auto;min-height:0;margin-right:6px">Cloud layer</label>
   </div>
-  <div id="map" aria-label="Map: tap any point to score it"></div>
-  <div class="legend"><span><i class="sw" style="background:#fff"></i>terrain inside cloud</span><span><i class="sw" style="background:rgba(255,255,255,.4)"></i>cloud overhead</span><span><i class="sw" style="background:#7a7a7a"></i>no satellite data</span></div>
+  <div id="stops" hidden></div>
+  <div class="row" id="routeBtns" hidden><button id="rate" class="pri">Rate this route</button><button id="clearR">Clear route</button></div>
+  <div id="map" aria-label="Map"></div>
+  <div class="legend"><span><i class="sw" style="background:#fff"></i>terrain inside cloud</span><span><i class="sw" style="background:rgba(255,255,255,.45)"></i>cloud overhead</span><span><i class="sw" style="background:#7a7a7a"></i>no usable satellite data</span></div>
  </section>
- <section id="out"><div class="empty">Search any place in India, tap the map, or use your location.<br>You'll get a satellite-based score: <b>1</b> clear · <b>0.5</b> partially clear · <b>0</b> not clear, with confidence and reasons.</div></section>
+ <section id="out"><div class="empty" id="intro">Search any place in India, tap the map, or use your location.<br>You'll get a satellite-based score: <b>1</b> clear · <b>0.5</b> partially clear · <b>0</b> not clear.<br><br>Planning a journey? Switch to <b>Route</b> and add two or more stops.</div></section>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -76,10 +88,10 @@ h2{font-size:15px;margin:18px 0 6px}ul{margin:0 0 0 18px;padding:0}li{margin:3px
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const F={NIGHT:1,CIRRUS:2,SNOWAMB:4,BASE:8,UNC:16,NODATA:32,MARG:64};
-const COL={1:"var(--s1)",0.5:"var(--s05)",0:"var(--s0)"},LABEL={1:"CLEAR",0.5:"PARTIALLY CLEAR",0:"NOT CLEAR"};
+const COL={1:"var(--s1)",0.5:"var(--s05)",0:"var(--s0)"},HEX={1:"#1f9d55",0.5:"#d99300",0:"#d64545",nd:"#8a8a8a"},LABEL={1:"CLEAR",0.5:"PARTIALLY CLEAR",0:"NOT CLEAR"};
 const PROF={himalaya:"Himalaya profile: snow/cloud separation on",northeast:"Northeast profile: low stratus and convection",western_ghats:"Western Ghats profile: monsoon cloud on the crest",
  plains:"Plains profile: winter fog mode",islands:"Islands profile: maritime convection",peninsula:"Peninsula profile"};
-let M=null,map=null,marker=null,ring=null,overlay=null,spot=null;const cache={};
+let M=null,map=null,marker=null,ring=null,overlays={},spot=null,mode="point",stops=[],routeLayer=null,stopLayer=null;const cache={};
 
 /* ---------- manifest ---------- */
 fetch("manifest.json",{cache:"no-store"}).then(r=>r.json()).then(m=>{M=m;const t=new Date(m.image_time_utc);
@@ -88,50 +100,74 @@ fetch("manifest.json",{cache:"no-store"}).then(r=>r.json()).then(m=>{M=m;const t
 
 /* ---------- map ---------- */
 if(window.L){map=L.map("map").setView([23,80],5);L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:15,attribution:"&copy; OpenStreetMap"}).addTo(map);
- map.on("click",e=>pick(e.latlng.lat,e.latlng.lng,null,true))}
+ stopLayer=L.layerGroup().addTo(map);map.on("click",e=>mode=="point"?pick(e.latlng.lat,e.latlng.lng,null,true):addStop(e.latlng.lat,e.latlng.lng,null,true))}
+
+/* ---------- mode ---------- */
+function setMode(m){mode=m;$("#tPoint").classList.toggle("on",m=="point");$("#tRoute").classList.toggle("on",m=="route");
+ $("#radWrap").hidden=m!="point";$("#rwWrap").hidden=m!="route";$("#stops").hidden=m!="route";$("#routeBtns").hidden=m!="route";
+ $("#q").placeholder=m=="point"?"Place, coordinates, or a Google Maps link":"Add a stop: place, coordinates or Google Maps link";
+ if(m=="route"){if(marker){marker.remove();marker=null}if(ring){ring.remove();ring=null}renderStops();$("#out").innerHTML='<div class="empty">Add at least two stops (search, or tap the map), then <b>Rate this route</b>. Stops are flown in the order listed.</div>'}
+ else{if(routeLayer){routeLayer.remove();routeLayer=null}stopLayer&&stopLayer.clearLayers();$("#out").innerHTML='<div class="empty">Search any place, tap the map, or use your location.</div>'}}
+$("#tPoint").onclick=()=>setMode("point");$("#tRoute").onclick=()=>setMode("route");
+
+/* ---------- location parsing ---------- */
+function dms(d,m,s,h){let v=(+d)+(+m||0)/60+(+s||0)/3600;if(/[SW]/i.test(h||""))v=-v;return v}
+function parseLoc(q){q=q.trim();let m;
+ if(/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(q))return {err:"Short Google links can't be opened here. In Google Maps, long-press the spot and copy the coordinates instead."};
+ if(m=q.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/))return {lat:+m[1],lon:+m[2]};
+ if(m=q.match(/[?&](?:q|query|ll|destination|center)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i))return {lat:+m[1],lon:+m[2]};
+ if(m=q.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/))return {lat:+m[1],lon:+m[2]};
+ if(m=q.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*°?\s*([NS])?\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*°?\s*([EW])?\s*$/i))return {lat:(/S/i.test(m[2]||"")?-1:1)*+m[1],lon:(/W/i.test(m[4]||"")?-1:1)*+m[3]};
+ if(m=q.match(/(\d{1,2})°\s*(\d{1,2})['′]\s*(\d{1,2}(?:\.\d+)?)?["″]?\s*([NS])[,\s]+(\d{1,3})°\s*(\d{1,2})['′]\s*(\d{1,2}(?:\.\d+)?)?["″]?\s*([EW])/i))
+  return {lat:dms(m[1],m[2],m[3],m[4]),lon:dms(m[5],m[6],m[7],m[8])};
+ return null}
 
 /* ---------- search ---------- */
-const LL=/^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
-async function search(){const q=$("#q").value.trim();if(!q)return;const m=q.match(LL);if(m){hide();return pick(+m[1],+m[2],null,true)}
+async function search(){const q=$("#q").value.trim();if(!q)return;const p=parseLoc(q);
+ if(p&&p.err)return show(`<div>${esc(p.err)}</div>`);
+ if(p){hide();return mode=="point"?pick(p.lat,p.lon,null,true):addStop(p.lat,p.lon,null,true)}
  show('<div><span class="spin"></span>Searching…</div>');let items=[],fail=0;
- try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=in&q=${encodeURIComponent(q)}`);items=(await r.json()).map(x=>({n:x.name||x.display_name.split(",")[0],d:x.display_name,lat:+x.lat,lon:+x.lon}))}catch(e){fail++}
- if(!items.length){try{const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=6&countryCode=IN&name=${encodeURIComponent(q)}`);items=((await r.json()).results||[]).map(x=>({n:x.name,d:[x.admin2,x.admin1].filter(Boolean).join(", "),lat:x.latitude,lon:x.longitude}))}catch(e){fail++}}
- if(!items.length)return show(fail>=2?"<div><b>Can't reach the search service.</b> Check your connection.</div>":"<div>No match. Try a nearby town, or type coordinates like <b>34.28, 75.47</b>.</div>");
+ try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&countrycodes=in&q=${encodeURIComponent(q)}`);items=(await r.json()).map(x=>({n:x.name||x.display_name.split(",")[0],d:x.display_name,lat:+x.lat,lon:+x.lon}))}catch(e){fail++}
+ if(!items.length){try{const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=8&countryCode=IN&name=${encodeURIComponent(q)}`);items=((await r.json()).results||[]).map(x=>({n:x.name,d:[x.admin2,x.admin1].filter(Boolean).join(", "),lat:x.latitude,lon:x.longitude}))}catch(e){fail++}}
+ if(!items.length)return show(fail>=2?"<div><b>Can't reach the search service.</b> Check your connection.</div>":"<div>No match. Apartment and office names are often missing from the free map database. Paste coordinates from Google Maps instead (long-press the spot), or tap the map.</div>");
  show(items.map((x,i)=>`<div data-i="${i}"><b>${esc(x.n)}</b><small>${esc(x.d)}</small></div>`).join(""));
- document.querySelectorAll("#results [data-i]").forEach(el=>el.onclick=()=>{const x=items[+el.dataset.i];hide();pick(x.lat,x.lon,x.n,false)})}
+ document.querySelectorAll("#results [data-i]").forEach(el=>el.onclick=()=>{const x=items[+el.dataset.i];hide();$("#q").value="";mode=="point"?pick(x.lat,x.lon,x.n,false):addStop(x.lat,x.lon,x.n,false)})}
 function show(h){$("#results").innerHTML=h;$("#results").style.display="block"}function hide(){$("#results").style.display="none"}
 $("#go").onclick=search;$("#q").addEventListener("keydown",e=>{if(e.key=="Enter")search();if(e.key=="Escape")hide()});
 document.addEventListener("click",e=>{if(!e.target.closest(".search"))hide()});
 $("#me").onclick=()=>{if(!navigator.geolocation)return err("This browser can't share location.");$("#me").textContent="Locating…";
- navigator.geolocation.getCurrentPosition(p=>{$("#me").textContent="Use my location";pick(p.coords.latitude,p.coords.longitude,null,true)},
+ navigator.geolocation.getCurrentPosition(p=>{$("#me").textContent="Use my location";const a=p.coords.latitude,b=p.coords.longitude;mode=="point"?pick(a,b,null,true):addStop(a,b,"My location",false)},
  ()=>{$("#me").textContent="Use my location";err("Location permission was refused or unavailable. Search or tap the map instead.")},{enableHighAccuracy:true,timeout:12000})};
-$("#rad").onchange=()=>{if(spot)pick(spot.lat,spot.lon,spot.name,false)};
-$("#ov").onchange=()=>{if(overlay){if($("#ov").checked)overlay.addTo(map);else overlay.remove()}};
+$("#rad").onchange=()=>{if(spot&&mode=="point")pick(spot.lat,spot.lon,spot.name,false)};
+$("#rw").onchange=()=>{if(mode=="route"&&stops.length>1)rateRoute()};
+$("#ov").onchange=()=>{for(const k in overlays){if($("#ov").checked)overlays[k].addTo(map);else overlays[k].remove()}};
 async function reverse(lat,lon){try{const j=await (await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&lat=${lat}&lon=${lon}`)).json();const a=j.address||{};
  return a.village||a.hamlet||a.suburb||a.town||a.city||a.county||a.state_district||j.name||null}catch(e){return null}}
 
 /* ---------- tiles ---------- */
+const INDIA=(lat,lon)=>lat>=6&&lat<=37.5&&lon>=68&&lon<=97.5;
 async function gunzip(buf){if(window.DecompressionStream){const s=new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));return new Uint8Array(await new Response(s).arrayBuffer())}
  throw new Error("This browser can't unpack data; please update Safari/Chrome.")}
 async function loadTile(k){if(cache[k])return cache[k];const n=M.grid.n,nn=n*n;
  const [run,ter]=await Promise.all([fetch(`run/${k}.bin.gz`,{cache:"no-store"}),fetch(`terrain/${k}.bin.gz`)]);
  if(!run.ok)throw new Error("no data for this area in the latest run");
  const b=await gunzip(await run.arrayBuffer()),t=await gunzip(await ter.arrayBuffer());
- const T={obs:b.subarray(0,nn),pcol:b.subarray(nn,2*nn),cls:b.subarray(2*nn,3*nn),flags:b.subarray(3*nn,4*nn),
-  cth:new Uint16Array(b.buffer.slice(b.byteOffset+4*nn,b.byteOffset+6*nn)),z:new Uint16Array(t.buffer.slice(t.byteOffset,t.byteOffset+2*nn))};
- return cache[k]=T}
+ return cache[k]={obs:b.subarray(0,nn),pcol:b.subarray(nn,2*nn),cls:b.subarray(2*nn,3*nn),flags:b.subarray(3*nn,4*nn),
+  cth:new Uint16Array(b.buffer.slice(b.byteOffset+4*nn,b.byteOffset+6*nn)),z:new Uint16Array(t.buffer.slice(t.byteOffset,t.byteOffset+2*nn))}}
 function tileKey(lat,lon){const a=Math.floor(lat/5)*5,b=Math.floor(lon/5)*5;return {k:`N${String(a).padStart(2,"0")}E${String(b).padStart(3,"0")}`,lat0:a,lon0:b}}
+function coverageMsg(lat,lon){return INDIA(lat,lon)?"The latest image has no usable data for this area. Himawari can't see far-western India well; INSAT data (coming) fixes this.":"This point is outside India coverage."}
 
 /* ---------- geometry ---------- */
 function vza(lat,lon,sub){if(sub==null)return null;const R=6378.137,H=35786,p=lat*Math.PI/180,d=(lon-sub)*Math.PI/180,c=Math.cos(p)*Math.cos(d),g=Math.acos(Math.max(-1,Math.min(1,c)));
  return Math.atan2(Math.sin(g),c-R/(R+H))*180/Math.PI}
+function hav(a,b){const R=6371,dl=(b[0]-a[0])*Math.PI/180,dn=(b[1]-a[1])*Math.PI/180,x=Math.sin(dl/2)**2+Math.cos(a[0]*Math.PI/180)*Math.cos(b[0]*Math.PI/180)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
 
 /* ---------- scoring: mirrors passcast/national.py score_cells ---------- */
 function score(T,info,lat,lon,radius){const n=M.grid.n,res=M.grid.res;const i0=(lat-info.lat0)/res-.5,j0=(lon-info.lon0)/res-.5;
  const rr=radius/111000/res,rj=rr/Math.cos(lat*Math.PI/180);const cells=[];
  for(let i=Math.max(0,Math.floor(i0-rr));i<=Math.min(n-1,Math.ceil(i0+rr));i++)for(let j=Math.max(0,Math.floor(j0-rj));j<=Math.min(n-1,Math.ceil(j0+rj));j++){
   if(((i-i0)/rr)**2+((j-j0)/rj)**2<=1)cells.push(i*n+j)}
- if(!cells.length)cells.push(Math.round(i0)*n+Math.round(j0));
+ if(!cells.length)cells.push(Math.min(n-1,Math.max(0,Math.round(i0)))*n+Math.min(n-1,Math.max(0,Math.round(j0))));
  const v=cells.filter(c=>!(T.flags[c]&F.NODATA));const zc=T.z[Math.min(n*n-1,Math.max(0,Math.round(i0)*n+Math.round(j0)))];
  if(v.length<cells.length*.5)return {none:true,z:zc};
  const mean=f=>v.reduce((a,c)=>a+f(c),0)/v.length,fl=b=>mean(c=>T.flags[c]&b?1:0);
@@ -159,24 +195,24 @@ function score(T,info,lat,lon,radius){const n=M.grid.n,res=M.grid.res;const i0=(
  return {s,lab,c,frac,cls,top:tops.length?tops[tops.length>>1]:null,z:zc,va,why,cav,cells:v.length}}
 
 /* ---------- overlay ---------- */
-function drawOverlay(T,info){if(!map)return;const n=M.grid.n,cv=document.createElement("canvas");cv.width=n;cv.height=n;const cx=cv.getContext("2d"),im=cx.createImageData(n,n);
+function drawOverlay(T,info){if(!map||overlays[info.k])return;const n=M.grid.n,cv=document.createElement("canvas");cv.width=n;cv.height=n;const cx=cv.getContext("2d"),im=cx.createImageData(n,n);
  for(let i=0;i<n;i++)for(let j=0;j<n;j++){const k=i*n+j,o=((n-1-i)*n+j)*4;if(T.flags[k]&F.NODATA){im.data.set([122,122,122,90],o);continue}
-  const a=Math.max(T.obs[k]*.85,T.pcol[k]*.35);im.data.set([255,255,255,a],o)}
- cx.putImageData(im,0,0);if(overlay)overlay.remove();overlay=L.imageOverlay(cv.toDataURL(),[[info.lat0,info.lon0],[info.lat0+M.grid.tile,info.lon0+M.grid.tile]],{opacity:.9});
- if($("#ov").checked)overlay.addTo(map)}
+  im.data.set([255,255,255,Math.max(T.obs[k]*.85,T.pcol[k]*.35)],o)}
+ cx.putImageData(im,0,0);overlays[info.k]=L.imageOverlay(cv.toDataURL(),[[info.lat0,info.lon0],[info.lat0+M.grid.tile,info.lon0+M.grid.tile]],{opacity:.9});
+ if($("#ov").checked)overlays[info.k].addTo(map)}
 
-/* ---------- pick + render ---------- */
+/* ---------- single point ---------- */
 function err(m){$("#out").innerHTML=`<div class="err">${m}</div>`}
 async function pick(lat,lon,name,doRev){spot={lat,lon,name:name||`${lat.toFixed(4)}, ${lon.toFixed(4)}`};const rad=+$("#rad").value;
  if(map){map.setView([lat,lon],Math.max(map.getZoom(),10));if(marker)marker.setLatLng([lat,lon]);else{marker=L.marker([lat,lon],{draggable:true}).addTo(map);marker.on("dragend",e=>{const p=e.target.getLatLng();pick(p.lat,p.lng,null,true)})}
   if(ring)ring.remove();ring=L.circle([lat,lon],{radius:rad,color:"#d6127e",weight:2,fill:false}).addTo(map)}
  if(!M)return err("Satellite data hasn't loaded yet. Try again in a moment.");
- const info=tileKey(lat,lon);info.k=info.k;if(!M.tiles[info.k])return err("This point is outside the India coverage, or the latest image had no data for this area.");
+ const info=tileKey(lat,lon);if(!M.tiles[info.k])return err(esc(coverageMsg(lat,lon)));
  $("#out").innerHTML='<div class="empty"><span class="spin"></span>Loading satellite tile…</div>';
  if(doRev)reverse(lat,lon).then(n=>{if(n&&spot&&spot.lat==lat){spot.name=n;const el=$("#pname");if(el)el.textContent=n}});
  let T;try{T=await loadTile(info.k)}catch(e){return err(esc(e.message))}
  drawOverlay(T,info);const r=score(T,info,lat,lon,rad),meta=M.tiles[info.k]||{};
- if(r.none)return err(`No usable satellite data at this point in the latest image (${esc(M.satellite)}). Elevation ${r.z} m.`);
+ if(r.none)return err(`No usable satellite data at this point in the latest image. ${esc(coverageMsg(lat,lon))} Terrain ${r.z} m.`);
  const b=r.cls;$("#out").innerHTML=`<p class="place" id="pname">${esc(spot.name)}</p>
  <div class="meta">${lat.toFixed(4)}, ${lon.toFixed(4)} · terrain ${r.z.toLocaleString()} m · ${esc(PROF[meta.profile]||"")}</div>
  <div class="stamp" style="background:${COL[r.s]}"><div class="n">${r.s}</div><div><div class="l">${LABEL[r.s]}</div><div class="c">confidence ${r.lab} (${Math.round(r.c*100)}%)</div></div></div>
@@ -184,8 +220,70 @@ async function pick(lat,lon,name,doRev){spot={lat,lon,name:name||`${lat.toFixed(
  <div><b>${r.top?r.top.toLocaleString()+" m":"–"}</b><span>cloud top</span></div><div><b>${Math.round(b[1]*100)}%</b><span>above cloud layer</span></div>
  <div><b>${Math.round(b[3]*100)}%</b><span>below cloud layer</span></div><div><b>${r.va==null?"–":Math.round(r.va)+"°"}</b><span>satellite view angle</span></div></div>
  <h2>Why this score</h2><ul>${r.why.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
- <h2>Caveats &amp; data quality</h2><ul>${r.cav.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
- <div class="note">Decision support only. Satellites see cloud tops: cloud base, visibility under cloud, wind, turbulence and icing are not observed. Scores are conservative: when the data can't rule out cloud, the point is scored down. Pilot / aviation met officer decides.</div>`}
+ <h2>Caveats &amp; data quality</h2><ul>${r.cav.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>${NOTE}`}
+const NOTE=`<div class="note">Decision support only. Satellites see cloud tops: cloud base, visibility under cloud, wind, turbulence and icing are not observed. Scores are conservative: when the data can't rule out cloud, it is scored down. The pilot / aviation met officer decides.</div>`;
+
+/* ---------- route ---------- */
+function addStop(lat,lon,name,doRev){const s={lat,lon,name:name||`${lat.toFixed(3)}, ${lon.toFixed(3)}`};stops.push(s);
+ if(doRev)reverse(lat,lon).then(n=>{if(n){s.name=n;renderStops()}});renderStops()}
+function renderStops(){$("#stops").innerHTML=stops.map((s,i)=>`<div class="stop"><b>${String.fromCharCode(65+Math.min(i,25))}</b><span>${esc(s.name)}</span><button data-i="${i}" aria-label="Remove stop">Remove</button></div>`).join("")||'<div class="hint">No stops yet.</div>';
+ document.querySelectorAll(".stop button").forEach(b=>b.onclick=()=>{stops.splice(+b.dataset.i,1);renderStops()});
+ if(stopLayer){stopLayer.clearLayers();stops.forEach((s,i)=>L.marker([s.lat,s.lon],{title:s.name}).bindTooltip(String.fromCharCode(65+Math.min(i,25)),{permanent:true,direction:"top"}).addTo(stopLayer));
+  if(stops.length>1)L.polyline(stops.map(s=>[s.lat,s.lon]),{color:"#13242e",weight:2,dashArray:"6 6"}).addTo(stopLayer);
+  if(stops.length)map.fitBounds(L.latLngBounds(stops.map(s=>[s.lat,s.lon])).pad(.3),{maxZoom:10})}}
+$("#clearR").onclick=()=>{stops=[];renderStops();if(routeLayer){routeLayer.remove();routeLayer=null}setMode("route")};
+$("#rate").onclick=()=>rateRoute();
+
+/* Samples every ~1 km along straight legs, scores each with the same rules as a
+   point (corridor = chosen half-width), then rates the route by its weakest
+   stretch: any blocked stretch >= 2 km -> 0; any partial/blocked -> 0.5; else 1. */
+async function rateRoute(){if(stops.length<2)return err("Add at least two stops.");if(!M)return err("Satellite data hasn't loaded yet.");
+ const hw=+$("#rw").value;$("#out").innerHTML='<div class="empty"><span class="spin"></span>Checking the route…</div>';
+ const S=[];let dist=0;
+ for(let l=0;l<stops.length-1;l++){const a=[stops[l].lat,stops[l].lon],b=[stops[l+1].lat,stops[l+1].lon],d=hav(a,b),n=Math.max(1,Math.ceil(d));
+  for(let k=(l?1:0);k<=n;k++){const f=k/n;S.push({lat:a[0]+(b[0]-a[0])*f,lon:a[1]+(b[1]-a[1])*f,km:dist+d*f,leg:l})}dist+=d}
+ if(S.length>1500)return err(`Route is ${Math.round(dist)} km; please keep routes under 1,500 km.`);
+ const keys=[...new Set(S.map(p=>tileKey(p.lat,p.lon).k))];const T={};
+ for(const k of keys){if(!M.tiles[k])continue;try{T[k]=await loadTile(k);const a=+k.slice(1,3),b=+k.slice(4,7);drawOverlay(T[k],{k,lat0:a,lon0:b})}catch(e){}}
+ for(const p of S){const info=tileKey(p.lat,p.lon);if(!T[info.k]){p.r={none:true,z:0};continue}p.r=score(T[info.k],info,p.lat,p.lon,hw)}
+ const st=p=>p.r.none?"nd":p.r.frac>M.thresholds.partial_max?0:p.r.frac>M.thresholds.clear_max?.5:1;
+ S.forEach(p=>p.st=st(p));
+ // stretches of consecutive same status
+ const runs=[];for(const p of S){const last=runs[runs.length-1];if(last&&last.st===p.st){last.end=p.km;last.pts.push(p)}else runs.push({st:p.st,start:p.km,end:p.km,pts:[p]})}
+ const lenOf=r=>Math.max(r.end-r.start,1);
+ const blocked=runs.filter(r=>r.st===0&&lenOf(r)>=2),partial=runs.filter(r=>r.st===.5||(r.st===0&&lenOf(r)<2));
+ const nd=S.filter(p=>p.st=="nd").length/S.length;
+ let rs=blocked.length?0:partial.length?.5:1;
+ const confs=S.filter(p=>!p.r.none).map(p=>p.r.c).sort((a,b)=>a-b);const c=confs.length?confs[Math.floor(confs.length*.1)]:0;
+ const lab=c>=.75?"HIGH":c>=.5?"MEDIUM":"LOW";const why=[];
+ if(nd>.2){if(rs==1)rs=.5;why.push(`${Math.round(nd*100)}% of the route has no usable satellite data`)}
+ if(rs==1&&lab=="LOW"){rs=.5;why.push("data quality too low to confirm CLEAR: capped at 0.5")}
+ const obsKm=S.filter(p=>!p.r.none&&p.r.frac>M.thresholds.clear_max).length;
+ why.push(`${Math.round(dist)} km in ${stops.length-1} leg${stops.length>2?"s":""}; ${Math.round(obsKm/S.length*100)}% of the route has cloud in the corridor`);
+ const nearStop=km=>{let acc=0,leg=0;for(let l=0;l<stops.length-1;l++){const d=hav([stops[l].lat,stops[l].lon],[stops[l+1].lat,stops[l+1].lon]);if(km<=acc+d){leg=l;break}acc+=d;leg=l}
+  return `${esc(stops[leg].name)} → ${esc(stops[leg+1].name)}`};
+ const worst=[...blocked,...partial].sort((a,b)=>(a.st-b.st)||(lenOf(b)-lenOf(a))).slice(0,5);
+ const zmax=S.reduce((a,p)=>p.r.z>a.r.z?p:a,S[0]);
+ const tiles=`<div class="tiles"><div><b>${Math.round(dist)} km</b><span>route length</span></div><div><b>${blocked.length}</b><span>blocked stretches</span></div><div><b>${partial.length}</b><span>partial stretches</span></div>
+  <div><b>${(zmax.r.z||0).toLocaleString()} m</b><span>highest terrain</span></div><div><b>${Math.round(nd*100)}%</b><span>no data</span></div><div><b>${hw/1000} km</b><span>corridor each side</span></div></div>`;
+ const list=worst.length?`<h2>Problem stretches</h2><ul>${worst.map(r=>`<li><b style="color:${HEX[r.st]}">${r.st===0?"Blocked":"Partly obscured"}</b> km ${Math.round(r.start)==Math.round(r.end)?Math.round(r.start):Math.round(r.start)+"–"+Math.round(r.end)} (${nearStop(r.start)}), terrain up to ${Math.max(...r.pts.map(p=>p.r.z||0)).toLocaleString()} m${(()=>{const t=r.pts.map(p=>p.r.top).filter(Boolean).sort((a,b)=>a-b);return t.length?`, cloud top ~${t[t.length>>1].toLocaleString()} m`:""})()}</li>`).join("")}</ul>`:"";
+ const cav=[...new Set(S.filter(p=>!p.r.none).flatMap(p=>p.r.cav))].slice(0,6);
+ $("#out").innerHTML=`<p class="place">${esc(stops[0].name)} → ${esc(stops[stops.length-1].name)}</p><div class="meta">${stops.map(s=>esc(s.name)).join(" → ")}</div>
+ <div class="stamp" style="background:${COL[rs]}"><div class="n">${rs}</div><div><div class="l">ROUTE ${LABEL[rs]}</div><div class="c">confidence ${lab} · rated by the weakest stretch</div></div></div>
+ ${tiles}<h2>Terrain and cloud along the route</h2><div class="fig"><svg id="prof" role="img" aria-label="Route terrain profile with cloud"></svg></div>
+ <div class="legend"><span><i class="sw" style="background:${HEX[1]}"></i>clear</span><span><i class="sw" style="background:${HEX[.5]}"></i>partly obscured</span><span><i class="sw" style="background:${HEX[0]}"></i>blocked</span><span><i class="sw" style="background:${HEX.nd}"></i>no data</span><span><i class="sw" style="background:#fff"></i>cloud top</span></div>
+ <h2>Why this rating</h2><ul>${why.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>${list}
+ <h2>Caveats</h2><ul>${cav.map(x=>`<li>${esc(x)}</li>`).join("")}<li>Legs are straight lines between stops; add intermediate stops to follow a valley or road.</li></ul>${NOTE}`;
+ if(map){if(routeLayer)routeLayer.remove();routeLayer=L.layerGroup().addTo(map);for(let i=0;i<S.length-1;i++)L.polyline([[S[i].lat,S[i].lon],[S[i+1].lat,S[i+1].lon]],{color:HEX[S[i].st],weight:6,opacity:.95}).addTo(routeLayer)}
+ const svg=$("#prof");const draw=()=>{const W=svg.clientWidth,H=svg.clientHeight,pl=44,pr=10,pt=10,pb=24;const zs=S.map(p=>p.r.z||0),tops=S.map(p=>p.r.top||0);
+  const ymax=Math.max(...zs,...tops.filter(t=>t<12000))*1.1+100;const X=km=>pl+(W-pl-pr)*km/Math.max(dist,1),Y=z=>H-pb-(H-pt-pb)*z/ymax;
+  let h="";for(let i=0;i<S.length-1;i++)h+=`<rect x="${X(S[i].km)}" y="${H-pb-6}" width="${Math.max(1,X(S[i+1].km)-X(S[i].km))}" height="6" fill="${HEX[S[i].st]}"/>`;
+  h+=`<path d="M${X(0)},${Y(0)} ${S.map(p=>`L${X(p.km)},${Y(p.r.z||0)}`).join(" ")} L${X(dist)},${Y(0)} Z" fill="rgba(120,100,70,.35)" stroke="#a8551b" stroke-width="1.5"/>`;
+  S.forEach(p=>{if(p.r.top&&p.st!==1&&p.st!=="nd")h+=`<circle cx="${X(p.km)}" cy="${Y(Math.min(p.r.top,ymax))}" r="2.2" fill="#fff" stroke="#5b6b73" stroke-width=".6"/>`});
+  const step=ymax>6000?2000:1000;for(let z=0;z<ymax;z+=step)h+=`<text x="${pl-6}" y="${Y(z)+4}" text-anchor="end" font-size="11" fill="currentColor" opacity=".7">${W<520?z/1000+"k":z.toLocaleString()}</text><line x1="${pl}" x2="${W-pr}" y1="${Y(z)}" y2="${Y(z)}" stroke="currentColor" opacity=".08"/>`;
+  h+=`<text x="${W-pr}" y="${H-6}" text-anchor="end" font-size="11" fill="currentColor" opacity=".7">${Math.round(dist)} km</text><text x="${pl}" y="${H-6}" font-size="11" fill="currentColor" opacity=".7">0</text>`;
+  svg.innerHTML=h};const ro=new ResizeObserver(draw);ro.observe(svg);draw()}
+renderStops();
 }
 </script>
 </body>

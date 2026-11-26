@@ -94,3 +94,22 @@ def test_national_tile_matches_site_scores():
         rec = unpack(open(f"{d}/run/N30E075.bin.gz", "rb").read())
     got = [score_cells(rec, p.lat, p.lon, 30, 75, 3000, man)["score"] for p in passes]
     assert got == [1.0, 0.0, 0.5]
+
+
+def test_route_rating_weakest_stretch():
+    import numpy as np, tempfile
+    from scipy.interpolate import RegularGridInterpolator
+    from passcast.demo import make_demo
+    from passcast.national import run_national, N, tile_axes, key, unpack, score_route
+    dem, passes, truth, scene, when = make_demo()
+    lat, lon = tile_axes(30, 75)
+    f = RegularGridInterpolator((dem.lat, dem.lon), dem.z, bounds_error=False, fill_value=0)
+    LA, LO = np.meshgrid(lat, lon, indexing="ij")
+    z = f(np.column_stack([LA.ravel(), LO.ravel()])).reshape(N, N).astype("float32")
+    with tempfile.TemporaryDirectory() as d:
+        man = run_national(scene, "insat3dr", d, Thresholds(), terrain={key(30, 75): z}, tiles=[(30, 75)])
+        recs = {key(30, 75): unpack(open(f"{d}/run/N30E075.bin.gz", "rb").read())}
+    A, B, C = [(p.lat, p.lon) for p in passes]
+    assert score_route(recs, [A, (A[0] + 0.03, A[1] - 0.05)], 2000, man)["score"] == 1.0   # short hop in clear air
+    r = score_route(recs, [A, B], 2000, man)                                                 # ends inside the storm
+    assert r["score"] == 0.0 and r["blocked"] >= 1
