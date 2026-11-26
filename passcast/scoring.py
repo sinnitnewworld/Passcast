@@ -114,7 +114,9 @@ def confidence(field: DEMCloudField, m, meta: dict):
     vza = meta.get("vza_deg")
     if vza is not None:
         if vza > 70:
-            c -= 0.45; cav.append(f"very oblique satellite view ({vza:.0f} deg)")
+            # near the edge of the satellite's disk: footprints are stretched
+            # and parallax is huge; never better than LOW confidence
+            c -= 0.55; cav.append(f"very oblique satellite view ({vza:.0f} deg): use INSAT/Meteosat for this region")
         elif vza > 60:
             c -= 0.25; cav.append(f"oblique satellite view ({vza:.0f} deg)")
     age = meta.get("age_min")
