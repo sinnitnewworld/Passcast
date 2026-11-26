@@ -124,8 +124,9 @@ def cmd_national(a):
     write_terrain(terrain, out)
     print("Processing tiles ...")
     man = run_national(scene, a.satellite, out, th, terrain)
-    page = Path(__file__).parent / "web_national" / "index.html"
-    shutil.copy(page, out / "index.html")
+    web = Path(__file__).parent / "web_national"
+    for f in ("index.html", "planner.js"):
+        shutil.copy(web / f, out / f)
     print(f"{len(man['tiles'])} tiles in {man['processing_s']} s -> {out}/")
 
 
