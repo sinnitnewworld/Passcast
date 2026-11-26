@@ -11,6 +11,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write                 # lets a run start the next one (see "next-refresh")
 
 concurrency:
   group: pages
@@ -96,3 +97,21 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # GitHub's own timer (schedule above) has never started for this repository, so each
+  # run starts the next one itself: wait ~25 min, then trigger this workflow again.
+  # Only one run exists at a time: the concurrency group cancels an older run (including
+  # its wait) whenever a newer one starts, e.g. after a code push.
+  next-refresh:
+    needs: deploy
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Wait, then start the next refresh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sleep 1500
+          gh workflow run live.yml --repo "${{ github.repository }}" --ref main
+

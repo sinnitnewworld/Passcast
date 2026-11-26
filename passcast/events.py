@@ -27,13 +27,30 @@ QUERIES = [
     ("ban", "en", 'drone (ban OR banned OR prohibited OR "no-fly zone" OR "no fly zone" OR "red zone" OR "no drone zone" OR "drones prohibited")'),
     ("ban", "en", '("temporary red zone" OR "no flying zone" OR "Section 163" drone OR "Rule 24" drone)'),
     ("ban", "hi", "ड्रोन (प्रतिबंध OR रोक OR नो फ्लाई जोन OR रेड जोन)"),
-    ("vip", "en", '("Prime Minister" OR "PM Modi" OR President OR "Vice President") (visit OR "to visit" OR arrives) security'),
+    ("vip", "en", '("Prime Minister" OR "PM Modi" OR President OR "Vice President") visit (security OR traffic OR "no-fly" OR drone OR diversion)'),
     ("vip", "en", '("Chief Minister" OR "Home Minister" OR "Defence Minister") visit security arrangements'),
-    ("airshow", "en", '("air show" OR airshow OR "Surya Kiran" OR "Sarang" OR flypast OR "fly-past" OR "Aero India")'),
+    ("airshow", "en", '("air show" OR airshow OR "Surya Kiran" OR "Sarang" OR flypast OR "fly-past" OR aerobatic)'),
     ("crowd", "en", '(rally OR procession OR mela OR yatra OR "Ganesh visarjan" OR marathon OR festival) ("traffic advisory" OR "traffic diversion" OR "security arrangements")'),
 ]
 UA = "Mozilla/5.0 (PassCast events scanner; +https://sinnitnewworld.github.io/Passcast/)"
 DRONE_WORDS = re.compile(r"drone|ड्रोन|uav|no[- ]fly|red zone|unmanned|paraglid|aerial", re.I)
+# a visit only matters to pilots when it brings security measures; an air show only when it is a flying display
+VIP_OK = re.compile(r"security|traffic|diversion|road closure|closed|restriction|no[- ]fly|drone|red zone|ban|prohibit|advisory|bandobast|cordon", re.I)
+SHOW_OK = re.compile(r"air ?show|fly-?past|aerobatic|surya kiran|sarang|display|rehearsal", re.I)
+SHOW_NOT = re.compile(r"expands|exhibition space|preparations|review|registration|bookings|tickets? sale|stall", re.I)
+CROWD_OK = re.compile(r"traffic|diversion|advisory|security|closed|restriction|crowd|lakh|devotees", re.I)
+
+
+def relevant(kind, title):
+    if kind == "ban":
+        return bool(DRONE_WORDS.search(title))
+    if kind == "vip":
+        return bool(VIP_OK.search(title))
+    if kind == "airshow":
+        return bool(SHOW_OK.search(title)) and not SHOW_NOT.search(title)
+    if kind == "crowd":
+        return bool(CROWD_OK.search(title))
+    return True
 
 
 def _url(q, lang):
@@ -56,8 +73,7 @@ def parse_rss(xml_text, kind):
             t = email.utils.parsedate_to_datetime(pub).astimezone(dt.timezone.utc)
         except Exception:
             t = None
-        # a "ban" item must actually be about drones / aerial platforms
-        if kind == "ban" and not DRONE_WORDS.search(title):
+        if not relevant(kind, title):
             continue
         out.append({"type": kind, "title": title, "link": link, "source": source,
                     "published_utc": t.strftime("%Y-%m-%dT%H:%MZ") if t else None})

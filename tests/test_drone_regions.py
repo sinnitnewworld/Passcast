@@ -140,3 +140,13 @@ def test_events_rss_parse_and_filter():
     titles = [i["title"] for i in res["items"]]
     assert "Old drone ban in Delhi" not in titles                     # older than 72 h dropped
     assert len(titles) == len(set(titles))                            # de-duplicated across queries
+
+
+def test_events_relevance_rules():
+    from passcast.events import relevant
+    assert not relevant("vip", "Japanese lawmakers visit IISc, ISRO and BEL in Bengaluru")
+    assert relevant("vip", "Traffic diversions in Mysuru for PM Modi's visit on Friday")
+    assert not relevant("airshow", "Aero India 2027 expands exhibition space in Bengaluru amid rising demand")
+    assert not relevant("airshow", "Defence Production Secretary Reviews Preparations for Aero India 2027")
+    assert relevant("airshow", "Surya Kiran aerobatic team to perform over Marine Drive on Sunday")
+    assert relevant("ban", "Drones banned in Pune ahead of VP visit")
