@@ -61,6 +61,11 @@ h2{font-size:15px;margin:18px 0 6px}ul{margin:0 0 0 18px;padding:0}li{margin:3px
 .spin{display:inline-block;width:18px;height:18px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:s 1s linear infinite;vertical-align:-4px;margin-right:8px}
 @keyframes s{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.spin{animation:none}}
 .leaflet-container{font:inherit}
+.term{display:inline;min-height:0;padding:0;margin:0;border:0;background:none;font:inherit;color:inherit;font-weight:inherit;text-decoration:underline dotted 2px;text-underline-offset:3px;cursor:help}
+.ck .p{grid-column:2;font-size:14px;color:var(--ink);background:var(--sea);border-radius:6px;padding:4px 8px}
+.help{display:block;font-size:12px;line-height:1.35;color:var(--mute);margin-top:3px}
+#tip{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:min(520px,calc(100vw - 24px));background:var(--panel);color:var(--ink);border:2px solid var(--accent);border-radius:14px;padding:14px 16px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:5000}
+#tip p{margin:6px 0 10px}#tip .tipx{min-height:40px}
 .plain{background:var(--panel);border:2px solid var(--accent);border-radius:12px;padding:10px 14px;margin-top:12px}.plain ul{margin:6px 0 0 18px}.plain p{margin:8px 0 0}
 .gloss dl{margin:8px 0 0;display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr);gap:4px 12px;font-size:14px}.gloss dt{font-weight:700}.gloss dd{margin:0}
 .chk{display:flex;align-items:center;gap:8px;min-height:44px}.chk input{width:22px;height:22px;min-height:0;flex:none}
@@ -131,10 +136,11 @@ details{margin-top:10px;background:var(--panel);border:1px solid var(--line);bor
   <div id="map" aria-label="Map"></div>
   <div class="legend"><span><i class="sw" style="background:#fff"></i>terrain inside cloud</span><span><i class="sw" style="background:rgba(255,255,255,.45)"></i>cloud overhead</span><span><i class="sw" style="background:#7a7a7a"></i>no usable satellite data</span></div>
  </section>
- <section id="out"><div class="empty" id="intro">Search any place in India, tap the map, or use your location.<br>You'll get a satellite-based score: <b>1</b> clear · <b>0.5</b> partially clear · <b>0</b> not clear.<br><br>Planning a journey? Switch to <b>Route</b> and add two or more stops.</div></section>
+ <section id="out"><div class="empty" id="intro">Search any place in India, tap the map, or use your location. Tap any underlined word to see what it means.<br>You'll get a satellite-based score: <b>1</b> clear · <b>0.5</b> partially clear · <b>0</b> not clear.<br><br>Planning a journey? Switch to <b>Route</b> and add two or more stops.</div></section>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="planner.js"></script>
+<script src="explain.js"></script>
 <script>
 {
 const $=s=>document.querySelector(s);
@@ -392,7 +398,7 @@ function renderLow(P,v,wx,dep){const pts=P.pts,rules=P.rules,ac=P.ac,u=P.u,ist=m
  ${plainBox(P,checks)}${GLOSS}
  <h2>Vertical profile</h2><div class="fig"><svg id="prof" role="img" aria-label="Low-level vertical profile"></svg></div>
  <div class="legend"><span><i class="sw" style="background:#a8551b"></i>ground under the track (90 m)</span><span><i class="sw" style="background:none;border:1px dashed #a8551b"></i>highest ground within ${fk(u.latM)} m</span><span><i class="sw" style="background:#d6127e"></i>planned altitude</span><span><i class="sw" style="background:#d99300"></i>no turn-back room / under cloud</span></div>
- <h2>Rules checklist</h2><div class="checks">${checks.map(c=>`<div class="ck"><span class="b ${c.status}">${SLAB[c.status]}</span><span class="r">${esc(c.rule)}</span><span class="d">${esc(c.detail)}</span><span class="s">${esc(c.src)}</span></div>`).join("")}</div>
+ <h2>Rules checklist</h2><div class="checks">${checks.map(c=>`<div class="ck"><span class="b ${c.status}">${SLAB[c.status]}</span><span class="r">${esc(c.rule)}</span><span class="p">${esc((window.Explain&&Explain.CHECK[c.id.replace(/\d+$/,"")])||"")}</span><span class="d">${esc(c.detail)}</span><span class="s">${esc(c.src)}</span></div>`).join("")}</div>
  <h2>Waypoints (${wps.length})</h2><ul class="steps">${P.events.filter(e=>e.type=="orbit-up").map(e=>`<li><b>Orbit</b><span>Climb over the departure to ${fk(e.to)} ft</span></li>`).join("")}${wps.map((p,k)=>`<li><b>${k==0?"Start":k==wps.length-1?"End":"WP "+k}</b><span>${p.lat.toFixed(4)}, ${p.lon.toFixed(4)} · km ${p.km.toFixed(1)} · ${fk(p.alt)} ft (${fk(p.agl)} ft above ground)${p.turn?"":" · no turn-back room"}</span></li>`).join("")}${P.events.filter(e=>e.type=="orbit-down").map(e=>`<li><b>Orbit</b><span>Descend over the destination from ${fk(e.from)} ft</span></li>`).join("")}</ul>
  <div class="row"><button id="gpxOut">Download route (GPX)</button></div>
  <h2>You still have to check</h2><ul>${PL.notChecked(rules).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
@@ -452,7 +458,7 @@ function render(P,v,wx,dep){const S=P.S,rules=P.rules,ac=P.ac,first=stops[0].nam
  ${plainBox(P,checks)}${GLOSS}
  <h2>Vertical profile</h2><div class="fig"><svg id="prof" role="img" aria-label="Route vertical profile"></svg></div>
  <div class="legend"><span><i class="sw" style="background:#a8551b"></i>terrain (peak in each cell)</span><span><i class="sw" style="background:none;border:1px dashed #a8551b"></i>minimum altitude</span><span><i class="sw" style="background:rgba(200,210,220,.9)"></i>cloud</span><span><i class="sw" style="background:#d6127e"></i>${P.planned?"your altitude":"planned profile"}</span><span><i class="sw" style="background:none;border:1px dashed #d64545"></i>${rules.vfrMaxM!=null?"FL150 / aircraft limit":"aircraft limit"}</span></div>
- <h2>Rules checklist</h2><div class="checks">${checks.map(c=>`<div class="ck"><span class="b ${c.status}">${SLAB[c.status]}</span><span class="r">${esc(c.rule)}</span><span class="d">${esc(c.detail)}</span><span class="s">${esc(c.src)}</span></div>`).join("")}</div>
+ <h2>Rules checklist</h2><div class="checks">${checks.map(c=>`<div class="ck"><span class="b ${c.status}">${SLAB[c.status]}</span><span class="r">${esc(c.rule)}</span><span class="p">${esc((window.Explain&&Explain.CHECK[c.id.replace(/\d+$/,"")])||"")}</span><span class="d">${esc(c.detail)}</span><span class="s">${esc(c.src)}</span></div>`).join("")}</div>
  <h2>${P.planned?"Your profile":"Planned profile"}</h2>${legHtml}
  <h2>You still have to check</h2><ul>${PL.notChecked(rules).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
  <div class="note">Planning aid, not an approved flight-planning system. Satellites see cloud tops; bases are estimated and treated conservatively. Terrain is the Copernicus 90 m DEM, highest point per ~1 km cell. Forecast data is a model (Open-Meteo), not an IMD briefing. The pilot-in-command decides.</div>`;
