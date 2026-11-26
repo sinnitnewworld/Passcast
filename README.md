@@ -57,7 +57,13 @@ Every run publishes two pages:
 * `index.html`: the **search page**. Search any place, type coordinates, use your location or tap the map, and get a satellite score (1 / 0.5 / 0) with confidence and reasons.
   * Each run builds a 1 km cloud-and-terrain grid of all India (29 tiles of 5° × 5°). The page loads only the tile it needs and scores it in the browser, using the same rules as the Python code (`national.score_cells`).
   * Settings such as snow detection and fog mode are chosen per 5° tile, not per point. This is an approximation.
-* **Route mode** on the same page: add stops A → B → … The page samples every kilometre along the straight legs, scores each corridor (1–3 km each side), and rates the journey by its weakest stretch. A blocked stretch of 2 km or more gives 0; any partly obscured stretch gives 0.5; otherwise 1. It also shows a terrain profile with cloud tops and lists the problem stretches. The Python reference is `national.score_route`.
+* **Route mode** (flight planning aid):
+  * **Path:** stops A → B → … ; **Suggest a valley route**, which finds a least-cost path on the 1 km grid that favours valleys and passes, avoids cloud, and never asks for more than the aircraft's ceiling; or **Import GPX/KML** from your flight-planning app.
+  * **Aircraft:** typical public service ceilings for Cheetah/Lama-type, Chetak/Alouette III-type, ALH Dhruv-type, Mi-17-type, Bell 407-type helicopters and a Dornier 228-type turboprop, or a custom aircraft. Set your own aircraft's limits.
+  * **Terrain clearance:** 1,000, 1,500 or 2,000 ft above the **highest** terrain within the corridor. Each 1 km cell stores the peak of the 90 m Copernicus DEM, not the average.
+  * **Planned altitude** (ft AMSL) is checked against terrain clearance, the ceiling and the cloud layers at that altitude (cloud base and top per cell). Leave it blank to get a **suggested profile**: level legs, each the lowest level that clears the terrain and stays out of cloud, with climbs starting before ridges.
+  * **Rating:** every 1 km is rated and the journey takes its weakest stretch: a blocked stretch of 2 km or more gives 0, anything partly obscured gives 0.5, otherwise 1. Stretches flown above a cloud layer are flagged for VFR-on-top rules. The page shows a vertical profile (peak terrain, minimum safe altitude, cloud layers, flight level, ceiling) and the problem stretches.
+  * **Not modelled:** wind, turbulence, icing, density altitude and hover performance; obstacles such as masts and wires. Decision support only.
 * Location input accepts place names, coordinates (decimal or degrees/minutes/seconds) and full Google Maps links. Apartment names are often missing from OpenStreetMap, so paste coordinates for those.
 * `sites.html`: the **key sites** at full 30 m detail.
 

@@ -5,8 +5,8 @@ for every tile, runs the same science as the 30 m site product (terrain-adjusted
 cloud mask, parallax, terrain conditioning, layer classes). It writes compact
 gzip binary tiles that the browser fetches on demand:
 
-  terrain/<key>.bin.gz   uint16 elevation (m), static, built once and cached
-  run/<key>.bin.gz       per run: obs u8 | pcol u8 | cls u8 | flags u8 | cth u16 (10 m units)
+  terrain/<key>.bin.gz   static: mean u16 | max u16 elevation (m)
+  run/<key>.bin.gz       per run: obs u8 | pcol u8 | cls u8 | flags u8 | cth u16 | base u16 (10 m units; base 0 = to the ground)
   manifest.json          image time, satellite, grid, per-tile metadata
 
 The browser then averages the cells inside the chosen corridor and applies the
@@ -71,32 +71,42 @@ def _glo90_name(la, lo):
 
 
 def _read_degree(la, lo, cells):
-    """Read one 1x1 degree GLO-90 tile at reduced resolution using COG overviews
-    (only the needed bytes are fetched). Ocean tiles do not exist -> zeros."""
+    """Read one 1x1 degree GLO-90 tile at ~1 km. Returns (mean, max) per cell:
+    the mean drives the cloud science, the max drives terrain clearance (a 1 km
+    average would hide peaks). Ocean tiles do not exist -> zeros."""
     import rasterio
     from rasterio.enums import Resampling
     url = "/vsicurl/" + GLO90.format(n=_glo90_name(la, lo))
     try:
         with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif"):
             with rasterio.open(url) as src:
-                z = src.read(1, out_shape=(cells, cells), resampling=Resampling.average).astype("float32")
-        z = np.where(z < -500, 0, z)[::-1]          # north-up -> south-up
-        return np.clip(z, 0, 9000)
+                full = src.read(1).astype("float32")             # 1200x1200 at 3 arc-sec
+        full = np.where(full < -500, 0, full)[::-1]              # north-up -> south-up
+        f = full.shape[0] // cells
+        blk = full[:f * cells, :f * cells].reshape(cells, f, cells, -1)
+        return np.clip(blk.mean(axis=(1, 3)), 0, 9000), np.clip(blk.max(axis=(1, 3)), 0, 9000)
     except Exception:
-        return np.zeros((cells, cells), "float32")
+        z = np.zeros((cells, cells), "float32")
+        return z, z
 
 
-def build_terrain(cache_dir="~/.passcast/terrain1km", tiles=TILES, workers=16) -> dict:
+TERRAIN_MAX = {}     # tile key -> per-cell maximum elevation (for terrain clearance)
+
+
+def build_terrain(cache_dir="~/.passcast/terrain1km_v2", tiles=TILES, workers=16) -> dict:
+    """Returns {key: mean elevation}; per-cell maxima go to TERRAIN_MAX."""
     cache = Path(os.path.expanduser(cache_dir))
     cache.mkdir(parents=True, exist_ok=True)
     out = {}
     cells = int(round(1 / RES))
     for (la0, lo0) in tiles:
-        f = cache / f"{key(la0, lo0)}.npy"
+        k = key(la0, lo0)
+        f = cache / f"{k}.npy"
         if f.exists():
-            out[key(la0, lo0)] = np.load(f)
+            both = np.load(f)
+            out[k], TERRAIN_MAX[k] = both[0], both[1]
             continue
-        z = np.zeros((N, N), "float32")
+        z = np.zeros((N, N), "float32"); zx = np.zeros((N, N), "float32")
         jobs = {}
         with cf.ThreadPoolExecutor(workers) as ex:
             for i in range(int(TILE)):
@@ -104,18 +114,23 @@ def build_terrain(cache_dir="~/.passcast/terrain1km", tiles=TILES, workers=16) -
                     jobs[ex.submit(_read_degree, la0 + i, lo0 + j, cells)] = (i, j)
             for fut in cf.as_completed(jobs):
                 i, j = jobs[fut]
-                z[i * cells:(i + 1) * cells, j * cells:(j + 1) * cells] = fut.result()
-        np.save(f, z)
-        out[key(la0, lo0)] = z
-        print(f"  terrain {key(la0, lo0)}: max {z.max():.0f} m")
+                zm, zmax = fut.result()
+                z[i * cells:(i + 1) * cells, j * cells:(j + 1) * cells] = zm
+                zx[i * cells:(i + 1) * cells, j * cells:(j + 1) * cells] = zmax
+        np.save(f, np.stack([z, zx]))
+        out[k], TERRAIN_MAX[k] = z, zx
+        print(f"  terrain {k}: max {zx.max():.0f} m")
     return out
 
 
 def write_terrain(terrain: dict, outdir):
+    """terrain/<key>.bin.gz = uint16 mean elevation | uint16 max elevation."""
     d = Path(outdir) / "terrain"
     d.mkdir(parents=True, exist_ok=True)
     for k, z in terrain.items():
-        (d / f"{k}.bin.gz").write_bytes(gzip.compress(np.clip(z, 0, 9000).astype("<u2").tobytes(), 6))
+        zx = TERRAIN_MAX.get(k, z)
+        blob = np.clip(z, 0, 9000).astype("<u2").tobytes() + np.clip(zx, 0, 9000).astype("<u2").tobytes()
+        (d / f"{k}.bin.gz").write_bytes(gzip.compress(blob, 6))
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +202,11 @@ def process_tile(scene, lat0, lon0, z, base_th: Thresholds, scene_sub_lon=None):
     flags |= np.where(nodata, FLAG_NODATA, 0).astype("uint8")
     flags |= np.where((pcol > 0.35) & (pcol < 0.65), FLAG_MARGINAL, 0).astype("uint8")
     cth = np.nan_to_num(field.cth_m, nan=0) / 10.0
+    base = np.nan_to_num(field.base_m, nan=0) / 10.0
+    base = np.where(field.base_assumed, 0, np.maximum(base, 1))       # 0 = reaches the ground
+    base = np.where(np.isfinite(field.cth_m), base, 0)
     obs = np.where(nodata, 0, obs); pcol = np.where(nodata, 0, pcol); cth = np.where(nodata, 0, cth)
+    base = np.where(nodata, 0, base)
     cls = np.where(nodata, 0, field.cls)
     rec = {
         "obs": np.clip(obs * 255, 0, 255).astype("u1"),
@@ -195,6 +214,7 @@ def process_tile(scene, lat0, lon0, z, base_th: Thresholds, scene_sub_lon=None):
         "cls": cls.astype("u1"),
         "flags": flags,
         "cth": np.clip(cth, 0, 65000).astype("<u2"),
+        "base": np.clip(base, 0, 65000).astype("<u2"),
     }
     meta = {"profile": prof, "t_ref": round(cm.t_ref_sl, 1), "from_clim": cm.ref_from_climatology,
             "valid": round(float(1 - nodata.mean()), 3), "tests": cm.diag}
@@ -203,7 +223,7 @@ def process_tile(scene, lat0, lon0, z, base_th: Thresholds, scene_sub_lon=None):
 
 def pack(rec) -> bytes:
     return gzip.compress(rec["obs"].tobytes() + rec["pcol"].tobytes() + rec["cls"].tobytes()
-                         + rec["flags"].tobytes() + rec["cth"].tobytes(), 6)
+                         + rec["flags"].tobytes() + rec["cth"].tobytes() + rec["base"].tobytes(), 6)
 
 
 def unpack(blob: bytes):
@@ -211,7 +231,7 @@ def unpack(blob: bytes):
     n = N * N
     out = {}
     o = 0
-    for name, dtype, size in (("obs", "u1", 1), ("pcol", "u1", 1), ("cls", "u1", 1), ("flags", "u1", 1), ("cth", "<u2", 2)):
+    for name, dtype, size in (("obs", "u1", 1), ("pcol", "u1", 1), ("cls", "u1", 1), ("flags", "u1", 1), ("cth", "<u2", 2), ("base", "<u2", 2)):
         out[name] = np.frombuffer(b[o:o + n * size], dtype=dtype).reshape(N, N)
         o += n * size
     return out

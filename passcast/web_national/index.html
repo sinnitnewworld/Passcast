@@ -38,6 +38,10 @@ button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}.row>*{flex:1 1 150px}
 #map{height:min(60vh,540px);min-height:320px;border-radius:12px;margin-top:10px;border:1px solid var(--line);background:var(--sea)}
 .lab{font-size:13px;color:var(--mute)}
+.grid3{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.filebtn{display:flex;align-items:center;justify-content:center;min-height:44px;border:1px solid var(--line);border-radius:10px;background:var(--panel);font-weight:600;color:var(--ink);font-size:16px;cursor:pointer;padding:8px 14px}
+.filebtn input{position:absolute;width:1px;height:1px;opacity:0}
+.steps{margin:6px 0 0;padding:0;list-style:none}.steps li{display:flex;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)}.steps b{min-width:96px;white-space:nowrap}
 #stops{margin-top:10px;display:grid;gap:6px}
 .stop{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 6px 6px 12px}
 .stop b{width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--bg);display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex:none}
@@ -49,7 +53,7 @@ button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}@media(max-width:560px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .tiles div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}.tiles b{display:block;font-size:18px;white-space:nowrap}.tiles span{font-size:13px;color:var(--mute)}
 h2{font-size:15px;margin:18px 0 6px}ul{margin:0 0 0 18px;padding:0}li{margin:3px 0}
-.fig{position:relative;height:220px;background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-top:8px}.fig svg{position:absolute;inset:0;width:100%;height:100%}
+.fig{position:relative;height:260px;background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-top:8px}.fig svg{position:absolute;inset:0;width:100%;height:100%}
 .empty{background:var(--panel);border:1px dashed var(--line);border-radius:14px;padding:26px;text-align:center;color:var(--mute)}
 .err{background:var(--panel);border:1px solid var(--s0);border-radius:12px;padding:14px;margin-top:10px}
 .note{font-size:13px;color:var(--mute);border-top:1px solid var(--line);margin-top:18px;padding-top:10px}
@@ -75,8 +79,17 @@ h2{font-size:15px;margin:18px 0 6px}ul{margin:0 0 0 18px;padding:0}li{margin:3px
    <label class="lab" id="rwWrap" hidden>Route corridor (each side)<select id="rw"><option value="1000">1 km</option><option value="2000" selected>2 km</option><option value="3000">3 km</option></select></label>
    <label class="lab"><input type="checkbox" id="ov" checked style="width:auto;min-height:0;margin-right:6px">Cloud layer</label>
   </div>
+  <div id="routeCtl" hidden>
+   <div class="grid3">
+    <label class="lab">Aircraft<select id="ac"></select></label>
+    <label class="lab">Service ceiling (ft)<input id="ceil" type="number" step="100" min="1000" max="45000"></label>
+    <label class="lab">Terrain clearance<select id="clr"><option value="1000" selected>1,000 ft</option><option value="1500">1,500 ft</option><option value="2000">2,000 ft</option></select></label>
+    <label class="lab">Planned altitude (ft AMSL)<input id="alt" type="number" step="500" min="0" max="45000" placeholder="Blank = suggest for me"></label>
+   </div>
+   <div class="hint">Aircraft figures are typical public values for each type; set your own aircraft's limits (weight, temperature and hover ceilings vary).</div>
+  </div>
   <div id="stops" hidden></div>
-  <div class="row" id="routeBtns" hidden><button id="rate" class="pri">Rate this route</button><button id="clearR">Clear route</button></div>
+  <div class="row" id="routeBtns" hidden><button id="rate" class="pri">Rate this route</button><button id="auto">Suggest a valley route</button><label class="lab filebtn">Import GPX / KML<input id="gpx" type="file" accept=".gpx,.kml,application/gpx+xml,application/vnd.google-earth.kml+xml"></label><button id="clearR">Clear route</button></div>
   <div id="map" aria-label="Map"></div>
   <div class="legend"><span><i class="sw" style="background:#fff"></i>terrain inside cloud</span><span><i class="sw" style="background:rgba(255,255,255,.45)"></i>cloud overhead</span><span><i class="sw" style="background:#7a7a7a"></i>no usable satellite data</span></div>
  </section>
@@ -104,7 +117,7 @@ if(window.L){map=L.map("map").setView([23,80],5);L.tileLayer("https://{s}.tile.o
 
 /* ---------- mode ---------- */
 function setMode(m){mode=m;$("#tPoint").classList.toggle("on",m=="point");$("#tRoute").classList.toggle("on",m=="route");
- $("#radWrap").hidden=m!="point";$("#rwWrap").hidden=m!="route";$("#stops").hidden=m!="route";$("#routeBtns").hidden=m!="route";
+ $("#radWrap").hidden=m!="point";$("#rwWrap").hidden=m!="route";$("#stops").hidden=m!="route";$("#routeBtns").hidden=m!="route";$("#routeCtl").hidden=m!="route";
  $("#q").placeholder=m=="point"?"Place, coordinates, or a Google Maps link":"Add a stop: place, coordinates or Google Maps link";
  if(m=="route"){if(marker){marker.remove();marker=null}if(ring){ring.remove();ring=null}renderStops();$("#out").innerHTML='<div class="empty">Add at least two stops (search, or tap the map), then <b>Rate this route</b>. Stops are flown in the order listed.</div>'}
  else{if(routeLayer){routeLayer.remove();routeLayer=null}stopLayer&&stopLayer.clearLayers();$("#out").innerHTML='<div class="empty">Search any place, tap the map, or use your location.</div>'}}
@@ -152,8 +165,9 @@ async function loadTile(k){if(cache[k])return cache[k];const n=M.grid.n,nn=n*n;
  const [run,ter]=await Promise.all([fetch(`run/${k}.bin.gz`,{cache:"no-store"}),fetch(`terrain/${k}.bin.gz`)]);
  if(!run.ok)throw new Error("no data for this area in the latest run");
  const b=await gunzip(await run.arrayBuffer()),t=await gunzip(await ter.arrayBuffer());
+ const u16=(a,o)=>new Uint16Array(a.buffer.slice(a.byteOffset+o,a.byteOffset+o+2*nn));
  return cache[k]={obs:b.subarray(0,nn),pcol:b.subarray(nn,2*nn),cls:b.subarray(2*nn,3*nn),flags:b.subarray(3*nn,4*nn),
-  cth:new Uint16Array(b.buffer.slice(b.byteOffset+4*nn,b.byteOffset+6*nn)),z:new Uint16Array(t.buffer.slice(t.byteOffset,t.byteOffset+2*nn))}}
+  cth:u16(b,4*nn),base:b.length>=8*nn?u16(b,6*nn):new Uint16Array(nn),z:u16(t,0),zx:t.length>=4*nn?u16(t,2*nn):u16(t,0)}}
 function tileKey(lat,lon){const a=Math.floor(lat/5)*5,b=Math.floor(lon/5)*5;return {k:`N${String(a).padStart(2,"0")}E${String(b).padStart(3,"0")}`,lat0:a,lon0:b}}
 function coverageMsg(lat,lon){return INDIA(lat,lon)?"The latest image has no usable data for this area. Himawari can't see far-western India well; INSAT data (coming) fixes this.":"This point is outside India coverage."}
 
@@ -224,65 +238,178 @@ async function pick(lat,lon,name,doRev){spot={lat,lon,name:name||`${lat.toFixed(
 const NOTE=`<div class="note">Decision support only. Satellites see cloud tops: cloud base, visibility under cloud, wind, turbulence and icing are not observed. Scores are conservative: when the data can't rule out cloud, it is scored down. The pilot / aviation met officer decides.</div>`;
 
 /* ---------- route ---------- */
-function addStop(lat,lon,name,doRev){const s={lat,lon,name:name||`${lat.toFixed(3)}, ${lon.toFixed(3)}`};stops.push(s);
+const FT=0.3048,m2ft=m=>Math.round(m/FT),ft2m=f=>f*FT,fmtFt=m=>m2ft(m).toLocaleString()+" ft";
+const AC=[["lama","Light helicopter, high-altitude (Cheetah / Lama type)",17700],["alouette","Light helicopter (Chetak / Alouette III type)",10500],
+ ["dhruv","Utility helicopter (ALH Dhruv type)",20000],["mi17","Medium-lift helicopter (Mi-17 type)",19600],["civil","Civil light helicopter (Bell 407 type)",18600],
+ ["do228","Light turboprop (Dornier 228 type)",25000],["custom","Custom aircraft",15000]];
+$("#ac").innerHTML=AC.map(a=>`<option value="${a[0]}">${esc(a[1])}</option>`).join("");$("#ac").value="dhruv";
+const setCeil=()=>{$("#ceil").value=AC.find(a=>a[0]==$("#ac").value)[2]};setCeil();
+$("#ac").onchange=()=>{setCeil();if(stops.length>1)rateRoute()};["ceil","clr","alt"].forEach(id=>$("#"+id).onchange=()=>{if(stops.length>1)rateRoute()});
+
+function addStop(lat,lon,name,doRev,via){const s={lat,lon,name:name||`${lat.toFixed(3)}, ${lon.toFixed(3)}`,via:!!via};stops.push(s);
  if(doRev)reverse(lat,lon).then(n=>{if(n){s.name=n;renderStops()}});renderStops()}
-function renderStops(){$("#stops").innerHTML=stops.map((s,i)=>`<div class="stop"><b>${String.fromCharCode(65+Math.min(i,25))}</b><span>${esc(s.name)}</span><button data-i="${i}" aria-label="Remove stop">Remove</button></div>`).join("")||'<div class="hint">No stops yet.</div>';
+function renderStops(){const main=stops.map((s,i)=>({s,i})).filter(x=>!x.s.via||stops.length<=10);
+ const viaN=stops.filter(s=>s.via).length;let letter=0;
+ $("#stops").innerHTML=(main.map(({s,i})=>`<div class="stop"><b>${s.via?"·":String.fromCharCode(65+Math.min(letter++,25))}</b><span>${esc(s.name)}</span><button data-i="${i}" aria-label="Remove">Remove</button></div>`).join("")
+  +(stops.length>10&&viaN?`<div class="hint">+ ${viaN} waypoints along the track</div>`:""))||'<div class="hint">No stops yet. Search, tap the map, or import a GPX/KML track.</div>';
  document.querySelectorAll(".stop button").forEach(b=>b.onclick=()=>{stops.splice(+b.dataset.i,1);renderStops()});
- if(stopLayer){stopLayer.clearLayers();stops.forEach((s,i)=>L.marker([s.lat,s.lon],{title:s.name}).bindTooltip(String.fromCharCode(65+Math.min(i,25)),{permanent:true,direction:"top"}).addTo(stopLayer));
+ if(stopLayer){stopLayer.clearLayers();let L2=0;stops.forEach(s=>{if(!s.via)L.marker([s.lat,s.lon],{title:s.name}).bindTooltip(String.fromCharCode(65+Math.min(L2++,25)),{permanent:true,direction:"top"}).addTo(stopLayer)});
   if(stops.length>1)L.polyline(stops.map(s=>[s.lat,s.lon]),{color:"#13242e",weight:2,dashArray:"6 6"}).addTo(stopLayer);
   if(stops.length)map.fitBounds(L.latLngBounds(stops.map(s=>[s.lat,s.lon])).pad(.3),{maxZoom:10})}}
 $("#clearR").onclick=()=>{stops=[];renderStops();if(routeLayer){routeLayer.remove();routeLayer=null}setMode("route")};
 $("#rate").onclick=()=>rateRoute();
 
-/* Samples every ~1 km along straight legs, scores each with the same rules as a
-   point (corridor = chosen half-width), then rates the route by its weakest
-   stretch: any blocked stretch >= 2 km -> 0; any partial/blocked -> 0.5; else 1. */
+/* GPX / KML import: track points become waypoints (thinned to <= 300) */
+$("#gpx").onchange=async e=>{const f=e.target.files[0];if(!f)return;const txt=await f.text();let pts=[];
+ try{const d=new DOMParser().parseFromString(txt,"application/xml");
+  d.querySelectorAll("trkpt,rtept").forEach(n=>pts.push([+n.getAttribute("lat"),+n.getAttribute("lon")]));
+  if(!pts.length)d.querySelectorAll("wpt").forEach(n=>pts.push([+n.getAttribute("lat"),+n.getAttribute("lon")]));
+  if(!pts.length)d.querySelectorAll("coordinates").forEach(n=>n.textContent.trim().split(/\s+/).forEach(t=>{const[a,b]=t.split(",").map(Number);if(isFinite(a)&&isFinite(b))pts.push([b,a])}))}catch(x){}
+ pts=pts.filter(p=>isFinite(p[0])&&isFinite(p[1]));if(pts.length<2)return err("Couldn't read a track from that file (GPX trkpt/rtept/wpt or KML coordinates).");
+ const step=Math.ceil(pts.length/300);const thin=pts.filter((p,i)=>i%step==0||i==pts.length-1);
+ stops=thin.map((p,i)=>({lat:p[0],lon:p[1],name:i==0?`${f.name}: start`:i==thin.length-1?`${f.name}: end`:`track point ${i}`,via:i>0&&i<thin.length-1}));
+ e.target.value="";renderStops();rateRoute()};
+
+/* Cells inside a corridor around a point (same tile) */
+function corridor(info,lat,lon,radius){const n=M.grid.n,res=M.grid.res,i0=(lat-info.lat0)/res-.5,j0=(lon-info.lon0)/res-.5,rr=radius/111000/res,rj=rr/Math.cos(lat*Math.PI/180),out=[];
+ for(let i=Math.max(0,Math.floor(i0-rr));i<=Math.min(n-1,Math.ceil(i0+rr));i++)for(let j=Math.max(0,Math.floor(j0-rj));j<=Math.min(n-1,Math.ceil(j0+rj));j++)if(((i-i0)/rr)**2+((j-j0)/rj)**2<=1)out.push(i*n+j);
+ if(!out.length)out.push(Math.min(n-1,Math.max(0,Math.round(i0)))*n+Math.min(n-1,Math.max(0,Math.round(j0))));return out}
+
+/* Vertical picture at one sample: peak terrain, safe altitude, cloud layers */
+function column(T,info,lat,lon,hw,clearM){const cells=corridor(info,lat,lon,hw),v=cells.filter(c=>!(T.flags[c]&F.NODATA));
+ if(v.length<cells.length*.5)return null;
+ let zmax=0,zmean=0;for(const c of v){zmax=Math.max(zmax,T.zx[c]);zmean+=T.z[c]}zmean/=v.length;
+ const layers=v.map(c=>T.pcol[c]>=128&&T.cth[c]>0?{base:T.flags[c]&F.BASE||T.base[c]==0?0:T.base[c]*10,top:T.cth[c]*10}:null);
+ const inCloud=h=>layers.reduce((a,L)=>a+(L&&h>=L.base-150&&h<=L.top+150?1:0),0)/v.length;
+ const below=h=>layers.reduce((a,L)=>a+(L&&L.top<h-150?1:0),0)/v.length;
+ const tops=layers.filter(Boolean).map(L=>L.top).sort((a,b)=>a-b),bases=layers.filter(Boolean).map(L=>L.base).sort((a,b)=>a-b);
+ return {zmax,zmean,msa:zmax+clearM,inCloud,below,top:tops.length?tops[tops.length>>1]:null,base:bases.length?bases[bases.length>>1]:null,cloudy:layers.filter(Boolean).length/v.length}}
+
+/* Lowest workable altitude at a sample: clear (<=20% of corridor in cloud), else partial (<=60%) */
+function suggestAlt(col,ceilM){if(col.msa>ceilM)return {st:0,why:"terrain + clearance above the aircraft's ceiling"};
+ for(const lim of [M.thresholds.clear_max,M.thresholds.partial_max])for(let h=col.msa;h<=ceilM;h+=100)if(col.inCloud(h)<=lim)return {h,st:lim==M.thresholds.clear_max?1:.5,ontop:col.below(h)>.3};
+ return {st:0,why:"cloud at every altitude between safe height and ceiling"}}
+function evalAlt(col,h,ceilM){if(h>ceilM)return {st:0,why:"planned altitude above the aircraft's ceiling"};
+ if(h<col.msa)return {st:0,why:`below safe terrain clearance (needs ${fmtFt(col.msa)})`};const f=col.inCloud(h);
+ return f>M.thresholds.partial_max?{st:0,why:"inside cloud"}:f>M.thresholds.clear_max?{st:.5,why:"partly in cloud"}:{st:1,ontop:col.below(h)>.3}}
+
+async function tilesFor(points){const keys=[...new Set(points.map(p=>tileKey(p[0],p[1]).k))],T={};
+ for(const k of keys){if(!M.tiles[k])continue;try{T[k]=await loadTile(k);drawOverlay(T[k],{k,lat0:+k.slice(1,3),lon0:+k.slice(4,7)})}catch(e){}}return T}
+
 async function rateRoute(){if(stops.length<2)return err("Add at least two stops.");if(!M)return err("Satellite data hasn't loaded yet.");
- const hw=+$("#rw").value;$("#out").innerHTML='<div class="empty"><span class="spin"></span>Checking the route…</div>';
+ const hw=+$("#rw").value,clearM=ft2m(+$("#clr").value),ceilM=ft2m(+$("#ceil").value||15000),planFt=$("#alt").value.trim(),planM=planFt?ft2m(+planFt):null;
+ $("#out").innerHTML='<div class="empty"><span class="spin"></span>Checking the route…</div>';
  const S=[];let dist=0;
  for(let l=0;l<stops.length-1;l++){const a=[stops[l].lat,stops[l].lon],b=[stops[l+1].lat,stops[l+1].lon],d=hav(a,b),n=Math.max(1,Math.ceil(d));
   for(let k=(l?1:0);k<=n;k++){const f=k/n;S.push({lat:a[0]+(b[0]-a[0])*f,lon:a[1]+(b[1]-a[1])*f,km:dist+d*f,leg:l})}dist+=d}
- if(S.length>1500)return err(`Route is ${Math.round(dist)} km; please keep routes under 1,500 km.`);
- const keys=[...new Set(S.map(p=>tileKey(p.lat,p.lon).k))];const T={};
- for(const k of keys){if(!M.tiles[k])continue;try{T[k]=await loadTile(k);const a=+k.slice(1,3),b=+k.slice(4,7);drawOverlay(T[k],{k,lat0:a,lon0:b})}catch(e){}}
- for(const p of S){const info=tileKey(p.lat,p.lon);if(!T[info.k]){p.r={none:true,z:0};continue}p.r=score(T[info.k],info,p.lat,p.lon,hw)}
- const st=p=>p.r.none?"nd":p.r.frac>M.thresholds.partial_max?0:p.r.frac>M.thresholds.clear_max?.5:1;
- S.forEach(p=>p.st=st(p));
- // stretches of consecutive same status
+ if(S.length>2000)return err(`Route is ${Math.round(dist)} km; please keep routes under 2,000 km.`);
+ const T=await tilesFor(S.map(p=>[p.lat,p.lon]));
+ for(const p of S){const info=tileKey(p.lat,p.lon);p.col=T[info.k]?column(T[info.k],info,p.lat,p.lon,hw,clearM):null;
+  if(!p.col){p.st="nd";continue}p.sug=suggestAlt(p.col,ceilM);const e=planM!=null?evalAlt(p.col,planM,ceilM):p.sug;p.st=e.st;p.why=e.why;p.ontop=e.ontop}
+ // suggested profile: look 3 km ahead so climbs start before the ridge, round up to 500 ft
+ const raw=S.map(p=>p.sug&&p.sug.h!=null?p.sug.h:null);
+ S.forEach((p,i)=>{let m=null;for(let j=Math.max(0,i-1);j<=Math.min(S.length-1,i+3);j++)if(raw[j]!=null)m=Math.max(m??0,raw[j]);p.plan=m==null?null:Math.ceil(m2ft(m)/500)*500});
+ // merge into level legs a pilot can fly: each leg holds the highest requirement inside it;
+ // start a new leg only to climb (after >= 5 km level) or to descend >= 1,500 ft for >= 8 km
+ const steps=[];let cur=null;
+ for(let i=0;i<S.length;i++){const r=S[i].plan,p=S[i];
+  if(r==null){if(!cur||cur.ft!=null){cur={ft:null,start:p.km,end:p.km};steps.push(cur)}else cur.end=p.km;continue}
+  if(!cur||cur.ft==null){cur={ft:r,start:p.km,end:p.km};steps.push(cur);continue}
+  const len=p.km-cur.start;
+  if(r>cur.ft){if(len<5){cur.ft=r;cur.end=p.km}else{cur={ft:r,start:p.km,end:p.km};steps.push(cur)}continue}
+  let ahead=0;for(let j=i;j<S.length&&S[j].km-p.km<=8;j++)ahead=Math.max(ahead,S[j].plan??1e9);
+  if(len>=8&&ahead<=cur.ft-1500&&S[S.length-1].km-p.km>=8){cur={ft:ahead,start:p.km,end:p.km};steps.push(cur)}else cur.end=p.km}
+ // within each leg pick the lowest level (>= its terrain requirement, <= ceiling) that keeps the most of the leg out of cloud
+ steps.forEach(t=>{if(t.ft==null)return;const pts=S.filter(p=>p.col&&p.km>=t.start&&p.km<=t.end);let best=null;
+  for(let f=t.ft;ft2m(f)<=ceilM+1;f+=500){const bad=pts.reduce((a,p)=>{const e=evalAlt(p.col,ft2m(f),ceilM);return a+(e.st===0?10:e.st===.5?1:0)},0);
+   if(best==null||bad<best.bad)best={f,bad};if(bad==0)break}if(best)t.ft=best.f});
+ // fly the merged legs (not the raw per-km minimum) when no altitude was entered
+ S.forEach(p=>{const st=steps.find(t=>p.km>=t.start&&p.km<=t.end);p.leg=st?st.ft:null;
+  if(planM==null&&p.col&&p.leg!=null){const e=evalAlt(p.col,ft2m(p.leg),ceilM);p.st=e.st;p.why=e.why;p.ontop=e.ontop}});
  const runs=[];for(const p of S){const last=runs[runs.length-1];if(last&&last.st===p.st){last.end=p.km;last.pts.push(p)}else runs.push({st:p.st,start:p.km,end:p.km,pts:[p]})}
- const lenOf=r=>Math.max(r.end-r.start,1);
- const blocked=runs.filter(r=>r.st===0&&lenOf(r)>=2),partial=runs.filter(r=>r.st===.5||(r.st===0&&lenOf(r)<2));
- const nd=S.filter(p=>p.st=="nd").length/S.length;
- let rs=blocked.length?0:partial.length?.5:1;
- const confs=S.filter(p=>!p.r.none).map(p=>p.r.c).sort((a,b)=>a-b);const c=confs.length?confs[Math.floor(confs.length*.1)]:0;
- const lab=c>=.75?"HIGH":c>=.5?"MEDIUM":"LOW";const why=[];
+ const lenOf=r=>Math.max(r.end-r.start,1),blocked=runs.filter(r=>r.st===0&&lenOf(r)>=2),partial=runs.filter(r=>r.st===.5||(r.st===0&&lenOf(r)<2));
+ const nd=S.filter(p=>p.st=="nd").length/S.length;let rs=blocked.length?0:partial.length?.5:1;const why=[];
+ // confidence from the point scorer at each sample
+ const confs=[];S.forEach(p=>{const info=tileKey(p.lat,p.lon);if(T[info.k]&&p.col){const r=score(T[info.k],info,p.lat,p.lon,hw);if(!r.none){confs.push(r.c);p.cav=r.cav}}});confs.sort((a,b)=>a-b);
+ const c=confs.length?confs[Math.floor(confs.length*.1)]:0,lab=c>=.75?"HIGH":c>=.5?"MEDIUM":"LOW";
  if(nd>.2){if(rs==1)rs=.5;why.push(`${Math.round(nd*100)}% of the route has no usable satellite data`)}
  if(rs==1&&lab=="LOW"){rs=.5;why.push("data quality too low to confirm CLEAR: capped at 0.5")}
- const obsKm=S.filter(p=>!p.r.none&&p.r.frac>M.thresholds.clear_max).length;
- why.push(`${Math.round(dist)} km in ${stops.length-1} leg${stops.length>2?"s":""}; ${Math.round(obsKm/S.length*100)}% of the route has cloud in the corridor`);
- const nearStop=km=>{let acc=0,leg=0;for(let l=0;l<stops.length-1;l++){const d=hav([stops[l].lat,stops[l].lon],[stops[l+1].lat,stops[l+1].lon]);if(km<=acc+d){leg=l;break}acc+=d;leg=l}
-  return `${esc(stops[leg].name)} → ${esc(stops[leg+1].name)}`};
+ const msaMax=S.reduce((a,p)=>p.col&&p.col.msa>a?p.col.msa:a,0),peak=S.reduce((a,p)=>p.col&&p.col.zmax>a?p.col.zmax:a,0);
+ const ontop=S.filter(p=>p.ontop).length;
+ why.push(planM!=null?`Checked at ${Number(planFt).toLocaleString()} ft AMSL with ${$("#clr").value} ft terrain clearance`:`Checked at the suggested altitudes below, with ${$("#clr").value} ft terrain clearance`);
+ why.push(`Highest terrain within ${hw/1000} km of the track: ${fmtFt(peak)} (${Math.round(peak).toLocaleString()} m); minimum safe altitude up to ${fmtFt(msaMax)}`);
+ if(msaMax>ceilM)why.push(`Terrain + clearance exceeds this aircraft's ceiling (${Number($("#ceil").value).toLocaleString()} ft) on part of the route: try "Suggest a valley route"`);
+ if(ontop)why.push(`${ontop} km would be flown above a cloud layer (no ground reference below): check your VFR-on-top rules`);
+ const nearLeg=km=>{let acc=0;for(let l=0;l<stops.length-1;l++){const d=hav([stops[l].lat,stops[l].lon],[stops[l+1].lat,stops[l+1].lon]);if(km<=acc+d)return l;acc+=d}return stops.length-2};
+ const legName=km=>{const l=nearLeg(km);let a=l,b=l+1;while(a>0&&stops[a].via)a--;while(b<stops.length-1&&stops[b].via)b++;return `${esc(stops[a].name)} → ${esc(stops[b].name)}`};
+ const kmR=r=>Math.round(r.start)==Math.round(r.end)?`km ${Math.round(r.start)}`:`km ${Math.round(r.start)}–${Math.round(r.end)}`;
  const worst=[...blocked,...partial].sort((a,b)=>(a.st-b.st)||(lenOf(b)-lenOf(a))).slice(0,5);
- const zmax=S.reduce((a,p)=>p.r.z>a.r.z?p:a,S[0]);
- const tiles=`<div class="tiles"><div><b>${Math.round(dist)} km</b><span>route length</span></div><div><b>${blocked.length}</b><span>blocked stretches</span></div><div><b>${partial.length}</b><span>partial stretches</span></div>
-  <div><b>${(zmax.r.z||0).toLocaleString()} m</b><span>highest terrain</span></div><div><b>${Math.round(nd*100)}%</b><span>no data</span></div><div><b>${hw/1000} km</b><span>corridor each side</span></div></div>`;
- const list=worst.length?`<h2>Problem stretches</h2><ul>${worst.map(r=>`<li><b style="color:${HEX[r.st]}">${r.st===0?"Blocked":"Partly obscured"}</b> km ${Math.round(r.start)==Math.round(r.end)?Math.round(r.start):Math.round(r.start)+"–"+Math.round(r.end)} (${nearStop(r.start)}), terrain up to ${Math.max(...r.pts.map(p=>p.r.z||0)).toLocaleString()} m${(()=>{const t=r.pts.map(p=>p.r.top).filter(Boolean).sort((a,b)=>a-b);return t.length?`, cloud top ~${t[t.length>>1].toLocaleString()} m`:""})()}</li>`).join("")}</ul>`:"";
- const cav=[...new Set(S.filter(p=>!p.r.none).flatMap(p=>p.r.cav))].slice(0,6);
- $("#out").innerHTML=`<p class="place">${esc(stops[0].name)} → ${esc(stops[stops.length-1].name)}</p><div class="meta">${stops.map(s=>esc(s.name)).join(" → ")}</div>
- <div class="stamp" style="background:${COL[rs]}"><div class="n">${rs}</div><div><div class="l">ROUTE ${LABEL[rs]}</div><div class="c">confidence ${lab} · rated by the weakest stretch</div></div></div>
- ${tiles}<h2>Terrain and cloud along the route</h2><div class="fig"><svg id="prof" role="img" aria-label="Route terrain profile with cloud"></svg></div>
- <div class="legend"><span><i class="sw" style="background:${HEX[1]}"></i>clear</span><span><i class="sw" style="background:${HEX[.5]}"></i>partly obscured</span><span><i class="sw" style="background:${HEX[0]}"></i>blocked</span><span><i class="sw" style="background:${HEX.nd}"></i>no data</span><span><i class="sw" style="background:#fff"></i>cloud top</span></div>
- <h2>Why this rating</h2><ul>${why.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>${list}
- <h2>Caveats</h2><ul>${cav.map(x=>`<li>${esc(x)}</li>`).join("")}<li>Legs are straight lines between stops; add intermediate stops to follow a valley or road.</li></ul>${NOTE}`;
+ const prob=worst.length?`<h2>Problem stretches</h2><ul>${worst.map(r=>{const p=r.pts.find(x=>x.why)||r.pts[0];return `<li><b style="color:${HEX[r.st]}">${r.st===0?"Blocked":"Partly obscured"}</b> ${kmR(r)} (${legName(r.start)})${p.why?": "+esc(p.why):""}${p.col?`; peak terrain ${fmtFt(Math.max(...r.pts.filter(x=>x.col).map(x=>x.col.zmax)))}`:""}${p.col&&p.col.top?`, cloud top ~${fmtFt(p.col.top)}`:""}</li>`}).join("")}</ul>`:"";
+ const plan=`<h2>Suggested altitude profile</h2><ul class="steps">${steps.map(t=>`<li><b>${t.ft==null?"no safe level":t.ft.toLocaleString()+" ft"}</b><span>${kmR(t)} · ${legName(t.start)}</span></li>`).join("")}</ul>
+  <div class="hint">Level legs that keep ${$("#clr").value} ft above the highest terrain within ${hw/1000} km and stay out of cloud, rounded up to 500 ft; climbs start before ridges. Advisory only: confirm against your charts and the aircraft's performance for the day.</div>`;
+ const cav=[...new Set(S.filter(p=>p.cav).flatMap(p=>p.cav))].slice(0,6);
+ const first=stops[0].name,last=stops[stops.length-1].name;
+ $("#out").innerHTML=`<p class="place">${esc(first)} → ${esc(last)}</p><div class="meta">${esc(AC.find(a=>a[0]==$("#ac").value)[1])} · ceiling ${Number($("#ceil").value).toLocaleString()} ft · corridor ${hw/1000} km each side</div>
+ <div class="stamp" style="background:${COL[rs]}"><div class="n">${rs}</div><div><div class="l">ROUTE ${LABEL[rs]}</div><div class="c">confidence ${lab} · rated by the weakest stretch${planM!=null?` at ${Number(planFt).toLocaleString()} ft`:""}</div></div></div>
+ <div class="tiles"><div><b>${Math.round(dist)} km</b><span>route length</span></div><div><b>${fmtFt(peak)}</b><span>highest terrain</span></div><div><b>${fmtFt(msaMax)}</b><span>max safe altitude needed</span></div>
+  <div><b>${blocked.length}</b><span>blocked stretches</span></div><div><b>${partial.length}</b><span>partial stretches</span></div><div><b>${Math.round(nd*100)}%</b><span>no data</span></div></div>
+ <h2>Vertical profile</h2><div class="fig"><svg id="prof" role="img" aria-label="Route vertical profile"></svg></div>
+ <div class="legend"><span><i class="sw" style="background:#a8551b"></i>peak terrain</span><span><i class="sw" style="background:rgba(255,255,255,.9)"></i>cloud layer</span><span><i class="sw" style="background:#d6127e"></i>${planM!=null?"planned altitude":"suggested altitude"}</span><span><i class="sw" style="background:none;border:1px dashed #d64545"></i>aircraft ceiling</span></div>
+ <h2>Why this rating</h2><ul>${why.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>${prob}${plan}
+ <h2>Caveats</h2><ul>${cav.map(x=>`<li>${esc(x)}</li>`).join("")}<li>Terrain is the highest point in each ~1 km cell (Copernicus 90 m DEM); masts, wires and buildings are not included.</li><li>Cloud base is estimated (satellites see tops); wind, turbulence, icing, density altitude and hover performance are not modelled.</li></ul>${NOTE}`;
  if(map){if(routeLayer)routeLayer.remove();routeLayer=L.layerGroup().addTo(map);for(let i=0;i<S.length-1;i++)L.polyline([[S[i].lat,S[i].lon],[S[i+1].lat,S[i+1].lon]],{color:HEX[S[i].st],weight:6,opacity:.95}).addTo(routeLayer)}
- const svg=$("#prof");const draw=()=>{const W=svg.clientWidth,H=svg.clientHeight,pl=44,pr=10,pt=10,pb=24;const zs=S.map(p=>p.r.z||0),tops=S.map(p=>p.r.top||0);
-  const ymax=Math.max(...zs,...tops.filter(t=>t<12000))*1.1+100;const X=km=>pl+(W-pl-pr)*km/Math.max(dist,1),Y=z=>H-pb-(H-pt-pb)*z/ymax;
-  let h="";for(let i=0;i<S.length-1;i++)h+=`<rect x="${X(S[i].km)}" y="${H-pb-6}" width="${Math.max(1,X(S[i+1].km)-X(S[i].km))}" height="6" fill="${HEX[S[i].st]}"/>`;
-  h+=`<path d="M${X(0)},${Y(0)} ${S.map(p=>`L${X(p.km)},${Y(p.r.z||0)}`).join(" ")} L${X(dist)},${Y(0)} Z" fill="rgba(120,100,70,.35)" stroke="#a8551b" stroke-width="1.5"/>`;
-  S.forEach(p=>{if(p.r.top&&p.st!==1&&p.st!=="nd")h+=`<circle cx="${X(p.km)}" cy="${Y(Math.min(p.r.top,ymax))}" r="2.2" fill="#fff" stroke="#5b6b73" stroke-width=".6"/>`});
-  const step=ymax>6000?2000:1000;for(let z=0;z<ymax;z+=step)h+=`<text x="${pl-6}" y="${Y(z)+4}" text-anchor="end" font-size="11" fill="currentColor" opacity=".7">${W<520?z/1000+"k":z.toLocaleString()}</text><line x1="${pl}" x2="${W-pr}" y1="${Y(z)}" y2="${Y(z)}" stroke="currentColor" opacity=".08"/>`;
-  h+=`<text x="${W-pr}" y="${H-6}" text-anchor="end" font-size="11" fill="currentColor" opacity=".7">${Math.round(dist)} km</text><text x="${pl}" y="${H-6}" font-size="11" fill="currentColor" opacity=".7">0</text>`;
+ const svg=$("#prof");const draw=()=>{const W=svg.clientWidth,H=svg.clientHeight,pl=W<520?40:56,pr=10,pt=10,pb=24;
+  const vals=S.filter(p=>p.col).flatMap(p=>[p.col.zmax,p.col.msa,Math.min(p.col.top||0,ceilM+1500)]).concat([ceilM,planM||0,...steps.map(t=>t.ft?ft2m(t.ft):0)]);
+  const ymax=Math.max(...vals)*1.08+200;const X=km=>pl+(W-pl-pr)*km/Math.max(dist,1),Y=z=>H-pb-(H-pt-pb)*Math.max(0,Math.min(z,ymax))/ymax;let h="";
+  S.forEach((p,i)=>{if(!p.col||!p.col.top||p.col.cloudy<.2||i==S.length-1)return;const b=p.col.base||0;h+=`<rect x="${X(p.km)}" y="${Y(p.col.top)}" width="${Math.max(1,X(S[i+1].km)-X(p.km))}" height="${Math.max(1,Y(b)-Y(p.col.top))}" fill="rgba(200,210,220,${Math.min(.85,.25+p.col.cloudy*.6)})"/>`});
+  h+=`<path d="M${X(0)},${Y(0)} ${S.map(p=>`L${X(p.km)},${Y(p.col?p.col.zmean:0)}`).join(" ")} L${X(dist)},${Y(0)} Z" fill="rgba(168,85,27,.25)"/>`;
+  h+=`<path d="${S.map((p,i)=>`${i?"L":"M"}${X(p.km)},${Y(p.col?p.col.zmax:0)}`).join(" ")}" fill="none" stroke="#a8551b" stroke-width="1.6"/>`;
+  h+=`<path d="${S.map((p,i)=>`${i?"L":"M"}${X(p.km)},${Y(p.col?p.col.msa:0)}`).join(" ")}" fill="none" stroke="#a8551b" stroke-width="1" stroke-dasharray="3 3" opacity=".8"/>`;
+  h+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(ceilM)}" y2="${Y(ceilM)}" stroke="#d64545" stroke-dasharray="6 4"/>`;
+  if(planM!=null)h+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(planM)}" y2="${Y(planM)}" stroke="#d6127e" stroke-width="2.2"/>`;
+  else{let d="";steps.forEach(t=>{if(t.ft==null)return;const y=Y(ft2m(t.ft));d+=`M${X(t.start)},${y}L${X(Math.max(t.end,t.start+.5))},${y}`});h+=`<path d="${d}" fill="none" stroke="#d6127e" stroke-width="2.4"/>`}
+  for(let i=0;i<S.length-1;i++)h+=`<rect x="${X(S[i].km)}" y="${H-pb-5}" width="${Math.max(1,X(S[i+1].km)-X(S[i].km))}" height="5" fill="${HEX[S[i].st]}"/>`;
+  const stepFt=ymax/FT>30000?5000:ymax/FT>12000?2000:1000;for(let f=0;ft2m(f)<ymax;f+=stepFt){const y=Y(ft2m(f));h+=`<line x1="${pl}" x2="${W-pr}" y1="${y}" y2="${y}" stroke="currentColor" opacity=".08"/><text x="${pl-5}" y="${y+4}" text-anchor="end" font-size="11" fill="currentColor" opacity=".7">${W<520?f/1000+"k":f.toLocaleString()}</text>`}
+  h+=`<text x="${W-pr}" y="${H-7}" text-anchor="end" font-size="11" fill="currentColor" opacity=".7">${Math.round(dist)} km</text><text x="${pl}" y="${H-7}" font-size="11" fill="currentColor" opacity=".7">ft · 0 km</text>`;
   svg.innerHTML=h};const ro=new ResizeObserver(draw);ro.observe(svg);draw()}
+
+/* "Suggest a valley route": least-cost path on the 1 km grid between consecutive
+   main stops. Cost grows with the safe altitude a cell needs (so valleys and
+   passes win) and with cloud; cells whose safe altitude exceeds the aircraft's
+   ceiling, or that lack data, are impassable. */
+let autoNote="";
+$("#auto").onclick=async()=>{autoNote="";const main=stops.filter(s=>!s.via);if(main.length<2)return err("Add at least two stops first.");if(!M)return;
+ $("#out").innerHTML='<div class="empty"><span class="spin"></span>Searching valleys and passes…</div>';
+ const hw=+$("#rw").value,clearM=ft2m(+$("#clr").value),ceilM=ft2m(+$("#ceil").value||15000),res=M.grid.res,out=[main[0]];
+ for(let l=0;l<main.length-1;l++){const a=main[l],b=main[l+1],pad=.4;
+  const la0=Math.min(a.lat,b.lat)-pad,la1=Math.max(a.lat,b.lat)+pad,lo0=Math.min(a.lon,b.lon)-pad,lo1=Math.max(a.lon,b.lon)+pad;
+  const ny=Math.round((la1-la0)/res),nx=Math.round((lo1-lo0)/res);if(nx*ny>900000){autoNote+=`Leg ${a.name} → ${b.name} is too long to search; add a stop in between. `;out.push(b);continue}
+  const pts=[];for(let la=Math.floor(la0/5)*5;la<la1;la+=5)for(let lo=Math.floor(lo0/5)*5;lo<lo1;lo+=5)pts.push([la+.1,lo+.1]);const T=await tilesFor(pts);
+  const zx=new Float32Array(nx*ny).fill(1e9),ob=new Float32Array(nx*ny);
+  for(let i=0;i<ny;i++)for(let j=0;j<nx;j++){const la=la0+(i+.5)*res,lo=lo0+(j+.5)*res,info=tileKey(la,lo),t=T[info.k];if(!t)continue;
+   const ii=Math.floor((la-info.lat0)/res),jj=Math.floor((lo-info.lon0)/res),c=ii*M.grid.n+jj;if(t.flags[c]&F.NODATA)continue;zx[i*nx+j]=t.zx[c];ob[i*nx+j]=t.obs[c]/255}
+  // widen peaks by the corridor half-width so the whole corridor clears terrain
+  const r=Math.max(1,Math.round(hw/1000)),zw=new Float32Array(nx*ny),tmp=new Float32Array(nx*ny);
+  for(let i=0;i<ny;i++)for(let j=0;j<nx;j++){let m=0;for(let d=-r;d<=r;d++){const jj=j+d;if(jj>=0&&jj<nx)m=Math.max(m,zx[i*nx+jj])}tmp[i*nx+j]=m}
+  for(let i=0;i<ny;i++)for(let j=0;j<nx;j++){let m=0;for(let d=-r;d<=r;d++){const ii=i+d;if(ii>=0&&ii<ny)m=Math.max(m,tmp[ii*nx+j])}zw[i*nx+j]=m}
+  const cell=(la,lo)=>[Math.min(ny-1,Math.max(0,Math.floor((la-la0)/res))),Math.min(nx-1,Math.max(0,Math.floor((lo-lo0)/res)))];
+  const [si,sj]=cell(a.lat,a.lon),[gi,gj]=cell(b.lat,b.lon),kx=Math.cos((a.lat+b.lat)/2*Math.PI/180)*111*res,ky=111*res;
+  const ref=Math.min(zw[si*nx+sj],zw[gi*nx+gj])+clearM,g=new Float32Array(nx*ny).fill(Infinity),prev=new Int32Array(nx*ny).fill(-1),done=new Uint8Array(nx*ny);
+  const heap=[];const push=(f,n)=>{heap.push([f,n]);let i=heap.length-1;while(i>0){const p=(i-1)>>1;if(heap[p][0]<=heap[i][0])break;[heap[p],heap[i]]=[heap[i],heap[p]];i=p}};
+  const pop=()=>{const top=heap[0],last=heap.pop();if(heap.length){heap[0]=last;let i=0;for(;;){const l2=2*i+1,r2=l2+1;let m=i;if(l2<heap.length&&heap[l2][0]<heap[m][0])m=l2;if(r2<heap.length&&heap[r2][0]<heap[m][0])m=r2;if(m==i)break;[heap[m],heap[i]]=[heap[i],heap[m]];i=m}}return top};
+  const hst=(i,j)=>Math.hypot((i-gi)*ky,(j-gj)*kx);const s0=si*nx+sj,goal=gi*nx+gj;g[s0]=0;push(hst(si,sj),s0);let found=false,iter=0;
+  while(heap.length&&iter++<3e6){const [,n]=pop();if(done[n])continue;done[n]=1;if(n==goal){found=true;break}const i=(n/nx)|0,j=n%nx;
+   for(let di=-1;di<=1;di++)for(let dj=-1;dj<=1;dj++){if(!di&&!dj)continue;const ii=i+di,jj=j+dj;if(ii<0||jj<0||ii>=ny||jj>=nx)continue;const m=ii*nx+jj;if(done[m])continue;
+    const need=zw[m]+clearM;if(zx[m]>=1e9||need>ceilM)continue;const d=Math.hypot(di*ky,dj*kx);
+    const cost=d*(1+2*Math.max(0,need-ref)/1000+4*ob[m]);if(g[n]+cost<g[m]){g[m]=g[n]+cost;prev[m]=n;push(g[m]+hst(ii,jj),m)}}}
+  if(!found){autoNote+=`No path from ${a.name} to ${b.name} keeps terrain clearance under this aircraft's ceiling; that leg stays a straight line. `;out.push(b);continue}
+  const path=[];for(let n=goal;n!=-1;n=prev[n])path.push([la0+((n/nx|0)+.5)*res,lo0+(n%nx+.5)*res]);path.reverse();
+  // Douglas-Peucker to ~1.5 km
+  const dp=(P,eps)=>{if(P.length<3)return P;const[a1,b1]=[P[0],P[P.length-1]];let md=0,mi=0;for(let i=1;i<P.length-1;i++){const t=P[i],dx=(b1[1]-a1[1])*kx/res,dy=(b1[0]-a1[0])*ky/res,
+   d=Math.abs(dy*(t[1]-a1[1])*kx/res-dx*(t[0]-a1[0])*ky/res)/Math.max(1e-9,Math.hypot(dx,dy));if(d>md){md=d;mi=i}}
+   return md>eps?dp(P.slice(0,mi+1),eps).slice(0,-1).concat(dp(P.slice(mi),eps)):[a1,b1]};
+  dp(path,1.5).slice(1,-1).forEach((p,k)=>out.push({lat:p[0],lon:p[1],name:`via ${k+1}`,via:true}));out.push(b)}
+ stops=out;renderStops();await rateRoute();if(autoNote)$("#out").insertAdjacentHTML("afterbegin",`<div class="err" style="margin:0 0 10px">${esc(autoNote)}</div>`)};
 renderStops();
 }
 </script>

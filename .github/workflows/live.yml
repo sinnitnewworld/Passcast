@@ -35,8 +35,8 @@ jobs:
       - name: Cache 1 km terrain for India
         uses: actions/cache@v4
         with:
-          path: ~/.passcast/terrain1km
-          key: terrain1km-v1
+          path: ~/.passcast/terrain1km_v2
+          key: terrain1km-v2
       - name: Install
         run: pip install -r requirements.txt
       - name: Pick the latest image slot
