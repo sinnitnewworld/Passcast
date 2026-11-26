@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "passcast"
+version = "0.1.0"
+description = "Satellite-based flyability scores (1 / 0.5 / 0) for Himalayan passes"
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy", "matplotlib", "satpy", "pyresample", "rasterio", "h5py", "netCDF4"]
+
+[project.scripts]
+passcast = "passcast.cli:main"
+
+[tool.setuptools]
+packages = ["passcast"]
+
+[tool.setuptools.package-data]
+passcast = ["vendor/*"]

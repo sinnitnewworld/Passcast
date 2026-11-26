@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#13242e">
+<title>FlyCheck · drone weather for India</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/*
+VOICE: a field tool a pilot trusts at 6 am on a hilltop: plain, quick, decisive.
+IDEA: a survey map with a go/no-go stamp on it.
+PICTURE: the map with your spot, then the verdict stamp and the hour strip.
+COLOUR and TYPE: survey-map land/sea/ink with magenta route accent; Overpass.
+LAYOUT: one calm column on phones; map + controls beside results on wide screens.
+*/
+:root{color-scheme:light dark;
+--bg:light-dark(#fbfbf2,#0d1c24);--panel:light-dark(#ffffff,#132a35);--line:light-dark(#dfe3d6,#22404d);
+--ink:light-dark(#13242e,#e8f1f4);--mute:light-dark(#5b6b73,#93a9b2);--sea:light-dark(#bfe3ee,#173847);
+--accent:#d6127e;--go:#1f9d55;--cau:#d99300;--no:#d64545}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Overpass,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:clip}
+header{background:var(--sea);padding:14px max(4vw,16px) 12px}
+h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.2px}h1 span{font-weight:400;color:var(--mute);font-size:14px;margin-left:6px}
+.wrap{max-width:1240px;margin:0 auto;padding:14px max(4vw,16px) 40px;display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media(min-width:980px){.wrap{grid-template-columns:minmax(0,440px) minmax(0,1fr);align-items:start}.left{position:sticky;top:12px}}
+.search{position:relative;display:flex;gap:8px}
+input,select,button{font:inherit;font-size:16px;color:var(--ink)}
+input,select{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px;width:100%}
+button{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--panel);padding:8px 14px;cursor:pointer;font-weight:600}
+button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+#results{position:absolute;top:50px;left:0;right:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,.18);display:none;max-height:320px;overflow:auto}
+#results div{padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer}#results div:hover{background:var(--sea)}
+#results small{display:block;color:var(--mute);font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.row>*{flex:1 1 140px}
+#map{height:280px;border-radius:12px;margin-top:10px;border:1px solid var(--line);background:var(--sea)}
+label{font-size:13px;color:var(--mute);display:block;margin:10px 0 4px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{font-size:13px;padding:5px 10px;border-radius:20px;border:1px solid var(--line);background:var(--panel);cursor:pointer;min-height:32px}
+.place{font-size:24px;font-weight:800;line-height:1.15;margin:0}
+.meta{color:var(--mute);font-size:14px}
+.stamp{border-radius:14px;padding:16px 18px;color:#fff;margin-top:12px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:start}
+.stamp .v{font-size:34px;font-weight:800;line-height:1;border:3px solid rgba(255,255,255,.85);border-radius:8px;padding:8px 10px;transform:rotate(-4deg)}
+.stamp ul{margin:2px 0 0 18px;padding:0}.stamp .when{font-weight:600}
+@media(max-width:480px){.stamp{grid-template-columns:minmax(0,1fr)}.stamp .v{justify-self:start}}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+@media(max-width:600px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tiles div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.tiles b{display:block;font-size:19px;white-space:nowrap}.tiles span{font-size:13px;color:var(--mute)}
+h2{font-size:15px;margin:20px 0 6px}
+.strip{display:flex;gap:2px;overflow-x:auto;padding:4px 0 8px;scroll-snap-type:x proximity}
+.h{flex:0 0 30px;height:52px;border-radius:5px;color:#fff;font-size:11px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding-bottom:4px;cursor:pointer;border:0;scroll-snap-align:center;min-height:0}
+.h.night{opacity:.5}.h.sel{outline:3px solid var(--ink);outline-offset:1px}.h b{font-size:10px}
+.win{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--go);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
+.note{font-size:13px;color:var(--mute);border-top:1px solid var(--line);margin-top:18px;padding-top:10px}
+.region{background:var(--sea);border-radius:10px;padding:8px 12px;font-size:14px;margin-top:10px}
+.empty{background:var(--panel);border:1px dashed var(--line);border-radius:14px;padding:28px;text-align:center;color:var(--mute)}
+.err{background:var(--panel);border:1px solid var(--no);border-radius:12px;padding:14px;margin-top:12px}
+.spin{display:inline-block;width:18px;height:18px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:s 1s linear infinite;vertical-align:-4px;margin-right:8px}
+@keyframes s{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+.leaflet-container{font:inherit}
+</style>
+</head>
+<body>
+<header><h1>FlyCheck<span>drone weather for any spot in India</span></h1></header>
+<div class="wrap">
+ <section class="left">
+  <div class="search">
+   <input id="q" type="search" placeholder="Search a place, or type lat, long" autocomplete="off" aria-label="Search location">
+   <button id="go" class="pri" aria-label="Search">Search</button>
+   <div id="results" role="listbox"></div>
+  </div>
+  <div class="row"><button id="me">Use my location</button><button id="save">Save this spot</button></div>
+  <div id="map" aria-label="Map: tap to pick a spot"></div>
+  <div class="chips" id="saved"></div>
+  <div class="grid2">
+   <div><label for="drone">Drone</label><select id="drone"></select></div>
+   <div><label for="wind">Rated wind (m/s)</label><input id="wind" type="number" step="0.1" min="2" max="25"></div>
+   <div><label for="ht">Flight height (m above ground)</label><input id="ht" type="number" min="5" max="400" value="120"></div>
+   <div><label for="when">Planned time (IST)</label><input id="when" type="datetime-local"></div>
+  </div>
+ </section>
+ <section id="out"><div class="empty">Search a place, tap the map, or use your location.<br>You'll get GO / CAUTION / NO-GO for your planned time and the best windows in the next 3 days.</div></section>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+{
+const DRONES=[["mini","DJI Mini series (sub-250 g)",10.7,-10,40,false],["avata2","DJI Avata 2",10.7,-10,40,false],["air3","DJI Air 3",12,-10,40,false],
+["mavic3","DJI Mavic 3 series",12,-10,40,false],["atom2","Potensic Atom 2",10.7,-10,40,false],["fpv_light","Light FPV / cinewhoop",7,-10,40,false],
+["survey","Enterprise survey drone (IP-rated)",12,-20,50,true]].map(([key,name,wind,tmin,tmax,rain])=>({key,name,wind,tmin,tmax,rain}));
+const L0={goFrac:.6,noFrac:.85,rainNo:.2,rainProb:40,visNo:1500,visCau:5000,baseMargin:50,baseCau:200,cape:1000,kpCau:5,kpNo:7,tLow:5,tHigh:35};
+const VARS="temperature_2m,dew_point_2m,relative_humidity_2m,precipitation_probability,precipitation,weather_code,cloud_cover,cloud_cover_low,visibility,wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_direction_120m,wind_gusts_10m,cape,is_day";
+const REGIONS={himalaya:"Himalaya: weather turns fast in valleys; afternoon cloud builds on ridges. Cold drains batteries.",
+northeast:"Northeast hills: low cloud and sudden showers are common; morning valley fog.",
+western_ghats:"Western Ghats: in the monsoon, cloud often sits right on the crest; winds funnel through gaps.",
+plains:"North Indian plains: dense winter fog is common before 9-10 am from December to February; haze reduces line of sight.",
+islands:"Islands: sea breezes strengthen through the day; squalls arrive quickly.",
+peninsula:"Peninsula: afternoon thunderstorms are common before and during the monsoon."};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const store={get(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let spot=null,fc=null,kp={},verdicts=[],sel=0,map=null,marker=null,demo=false;
+
+/* ---------- controls ---------- */
+$("#drone").innerHTML=DRONES.map(d=>`<option value="${d.key}">${esc(d.name)}</option>`).join("");
+const prefs=store.get("fc_prefs",{drone:"mini",ht:120});
+$("#drone").value=prefs.drone;$("#ht").value=prefs.ht;
+const drone=()=>{const d=DRONES.find(x=>x.key==$("#drone").value);const w=parseFloat($("#wind").value);return {...d,wind:isFinite(w)&&w>0?w:d.wind}};
+function setWind(){$("#wind").value=DRONES.find(x=>x.key==$("#drone").value).wind}
+setWind();
+const pad=n=>String(n).padStart(2,"0");
+function istNow(){const d=new Date(Date.now()+(330+new Date().getTimezoneOffset())*60000);return d}
+function defaultWhen(){const d=istNow();d.setHours(d.getHours()+1,0,0,0);return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`}
+$("#when").value=defaultWhen();
+["drone","wind","ht","when"].forEach(id=>$("#"+id).addEventListener("change",()=>{if(id=="drone")setWind();store.set("fc_prefs",{drone:$("#drone").value,ht:$("#ht").value});if(fc)evaluateAll()}));
+
+/* ---------- map ---------- */
+function initMap(){if(!window.L){$("#map").innerHTML='<div class="empty" style="border:0">Map unavailable offline. Search or use your location.</div>';return}
+ map=L.map("map",{zoomControl:true}).setView([22.5,79],4);
+ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:17,attribution:"&copy; OpenStreetMap"}).addTo(map);
+ map.on("click",e=>pick(e.latlng.lat,e.latlng.lng,null,true))}
+initMap();
+
+/* ---------- geocoding ---------- */
+const LL=/^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
+async function search(){const q=$("#q").value.trim();if(!q)return;const m=q.match(LL);
+ if(m){hideResults();return pick(+m[1],+m[2],null,true)}
+ showResults('<div><span class="spin"></span>Searching…</div>');
+ let items=[],netFail=0;
+ try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=in&q=${encodeURIComponent(q)}`);
+  items=(await r.json()).map(x=>({name:x.name||x.display_name.split(",")[0],desc:x.display_name,lat:+x.lat,lon:+x.lon}))}catch(e){netFail++}
+ if(!items.length){try{const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=6&countryCode=IN&name=${encodeURIComponent(q)}`);
+  items=((await r.json()).results||[]).map(x=>({name:x.name,desc:[x.admin2,x.admin1,x.country].filter(Boolean).join(", "),lat:x.latitude,lon:x.longitude}))}catch(e){netFail++}}
+ if(!items.length&&netFail>=2)return showResults('<div><b>Can\'t reach the internet from here.</b> If you opened this inside a chat preview, open the hosted link or the downloaded file in Chrome/Safari instead.</div>');
+ if(!items.length)return showResults('<div>No match. Try a nearby town, or type coordinates like <b>13.37, 77.68</b>.</div>');
+ showResults(items.map((x,i)=>`<div role="option" data-i="${i}"><b>${esc(x.name)}</b><small>${esc(x.desc)}</small></div>`).join(""));
+ document.querySelectorAll("#results [data-i]").forEach(el=>el.onclick=()=>{const x=items[+el.dataset.i];hideResults();pick(x.lat,x.lon,x.name,false)})}
+function showResults(h){$("#results").innerHTML=h;$("#results").style.display="block"}
+function hideResults(){$("#results").style.display="none"}
+$("#go").onclick=search;$("#q").addEventListener("keydown",e=>{if(e.key=="Enter")search();if(e.key=="Escape")hideResults()});
+document.addEventListener("click",e=>{if(!e.target.closest(".search"))hideResults()});
+async function reverse(lat,lon){try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&lat=${lat}&lon=${lon}`);const j=await r.json();
+ const a=j.address||{};return a.village||a.suburb||a.town||a.city||a.hamlet||a.county||j.name||null}catch(e){return null}}
+$("#me").onclick=()=>{if(!navigator.geolocation)return showErr("This browser can't share location. Search instead.");
+ $("#me").textContent="Locating…";
+ navigator.geolocation.getCurrentPosition(p=>{$("#me").textContent="Use my location";pick(p.coords.latitude,p.coords.longitude,null,true)},
+  e=>{$("#me").textContent="Use my location";showErr("Location permission was refused or unavailable. Search a place or tap the map instead.")},{enableHighAccuracy:true,timeout:12000})};
+
+/* ---------- saved spots ---------- */
+function renderSaved(){const s=store.get("fc_spots",[]);
+ $("#saved").innerHTML=s.map((x,i)=>`<button class="chip" data-i="${i}">${esc(x.name)}</button>`).join("");
+ document.querySelectorAll("#saved .chip").forEach(b=>b.onclick=()=>{const x=s[+b.dataset.i];pick(x.lat,x.lon,x.name,false)})}
+$("#save").onclick=()=>{if(!spot)return;const s=store.get("fc_spots",[]).filter(x=>x.name!=spot.name);s.unshift({name:spot.name,lat:spot.lat,lon:spot.lon});store.set("fc_spots",s.slice(0,8));renderSaved()};
+renderSaved();
+
+/* ---------- data ---------- */
+async function pick(lat,lon,name,doReverse){
+ spot={lat,lon,name:name||`${lat.toFixed(4)}, ${lon.toFixed(4)}`};
+ if(map){map.setView([lat,lon],Math.max(map.getZoom(),11));if(marker)marker.setLatLng([lat,lon]);else{marker=L.marker([lat,lon],{draggable:true}).addTo(map);marker.on("dragend",e=>{const p=e.target.getLatLng();pick(p.lat,p.lng,null,true)})}}
+ $("#out").innerHTML='<div class="empty"><span class="spin"></span>Getting the forecast…</div>';
+ if(doReverse)reverse(lat,lon).then(n=>{if(n&&spot&&spot.lat==lat){spot.name=n;const el=$("#pname");if(el)el.textContent=n}});
+ demo=false;
+ try{const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&hourly=${VARS}&wind_speed_unit=ms&timezone=Asia%2FKolkata&forecast_days=3`);
+  if(!r.ok)throw new Error("HTTP "+r.status);fc=await r.json()}
+ catch(e){fc=null;return showErr(`Couldn't reach the forecast service (${esc(e.message)}). Check your connection. If you opened this inside a chat preview, open it in Chrome/Safari or from its hosted link instead: previews block outside connections.`,true)}
+ kp={};try{const r=await fetch("https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json");kp=parseKp(await r.json())}catch(e){}
+ evaluateAll()}
+function showErr(msg,offerDemo){$("#out").innerHTML=`<div class="err">${msg}${offerDemo?'<div class="row"><button id="retry">Try again</button><button id="dm">Show demo data</button></div>':""}</div>`;
+ if(offerDemo){$("#retry").onclick=()=>pick(spot.lat,spot.lon,spot.name,false);$("#dm").onclick=()=>{fc=synthetic();fc.elevation=900;kp={};demo=true;evaluateAll()}}}
+function parseKp(raw){const out={};if(!Array.isArray(raw)||!raw.length)return out;let rows;
+ if(Array.isArray(raw[0])){const h=raw[0].map(x=>String(x).toLowerCase());rows=raw.slice(1).map(r=>Object.fromEntries(h.map((k,i)=>[k,r[i]])))}else rows=raw.map(r=>Object.fromEntries(Object.entries(r).map(([k,v])=>[k.toLowerCase(),v])));
+ for(const r of rows){const k=Object.keys(r).find(k=>k=="kp"||k.startsWith("kp"));if(!r.time_tag||!k||r[k]===""||r[k]==null)continue;
+  const t=Date.parse(String(r.time_tag).replace(" ","T").replace(/Z?$/,"Z"));if(isFinite(t))out[t]=+r[k]}return out}
+function kpAt(tIst){const tu=Date.parse(tIst+":00Z")-330*60000;let best=null,bd=1e18;for(const k in kp){const d=Math.abs(k-tu);if(d<bd){bd=d;best=kp[k]}}return bd<=3*3600e3?best:null}
+
+/* ---------- region ---------- */
+function region(lat,lon,z){if(lat>=26.5&&z>=2500)return"himalaya";if(lat>=28.5&&lon<=81.5&&z>=1000)return"himalaya";
+ if(lon>=92&&lat<14.5)return"islands";if(lon<74&&lat<12.5)return"islands";if(lon>=89.5&&lat<29.5)return"northeast";
+ const g=lat<12.5?77.4:75.9;if(lat>=8&&lat<=21.5&&lon>=72.8&&lon<=g&&z>=300)return"western_ghats";if(lat>=22&&z<600)return"plains";return"peninsula"}
+
+/* ---------- evaluation (same rules as passcast/drone.py) ---------- */
+function windAt(w10,w80,w120,h){const p=[[10,w10],[80,w80],[120,w120]].filter(x=>x[1]!=null);if(!p.length)return null;if(h<=p[0][0])return p[0][1];
+ for(let i=0;i<p.length-1;i++){const[z0,a]=p[i],[z1,b]=p[i+1];if(h<=z1)return a+(b-a)*(h-z0)/(z1-z0)}return p[p.length-1][1]}
+const RANK={GO:0,CAUTION:1,"NO-GO":2};
+function evalHour(h,d,ht,kpv){const r=[];let lvl="GO";const bump=(l,w)=>{r.push(w);if(RANK[l]>RANK[lvl])lvl=l};
+ const w=windAt(h.wind_speed_10m,h.wind_speed_80m,h.wind_speed_120m,ht)||0,w10=h.wind_speed_10m||0,g10=h.wind_gusts_10m??w10;
+ const gust=w10>.5?Math.max(g10,g10*w/w10):Math.max(g10,w),Lw=d.wind;
+ if(w>L0.noFrac*Lw||gust>Lw)bump("NO-GO",`wind ${w.toFixed(1)} m/s, gusts ${gust.toFixed(1)} m/s at ${ht} m vs ${Lw} m/s rating`);
+ else if(w>L0.goFrac*Lw||gust>L0.noFrac*Lw)bump("CAUTION",`wind ${w.toFixed(1)} m/s, gusts ${gust.toFixed(1)} m/s: drift and faster battery drain`);
+ const rain=h.precipitation||0,rp=h.precipitation_probability||0;
+ if(rain>=L0.rainNo&&!d.rain)bump("NO-GO",`rain forecast (${rain.toFixed(1)} mm)`);else if(rp>=L0.rainProb)bump("CAUTION",`${Math.round(rp)}% chance of rain`);
+ const vis=h.visibility;if(vis!=null){if(vis<L0.visNo)bump("NO-GO",`visibility ${(vis/1000).toFixed(1)} km: fog or haze, no line of sight`);else if(vis<L0.visCau)bump("CAUTION",`visibility ${(vis/1000).toFixed(1)} km: haze, stay close`)}
+ const base=(h.temperature_2m!=null&&h.dew_point_2m!=null)?Math.max(0,125*(h.temperature_2m-h.dew_point_2m)):null,low=h.cloud_cover_low||0;
+ if(base!=null&&low>=50){if(base<ht+L0.baseMargin)bump("NO-GO",`low cloud (~${Math.round(base)} m above ground) below your ${ht} m`);else if(base<ht+L0.baseCau)bump("CAUTION",`low cloud base ~${Math.round(base)} m, close to your height`)}
+ if([95,96,99].includes(h.weather_code))bump("NO-GO","thunderstorm forecast");else if((h.cape||0)>=L0.cape)bump("CAUTION",`unstable air (CAPE ${Math.round(h.cape)}): storms can build quickly`);
+ const t=h.temperature_2m;if(t!=null){if(t<d.tmin||t>d.tmax)bump("NO-GO",`${Math.round(t)} °C is outside the drone's operating range`);
+  else if(t<L0.tLow)bump("CAUTION",`cold (${Math.round(t)} °C): warm batteries first, shorter flights`);else if(t>L0.tHigh)bump("CAUTION",`hot (${Math.round(t)} °C): batteries and motors run hot`)}
+ if(kpv!=null){if(kpv>=L0.kpNo)bump("NO-GO",`severe geomagnetic storm (Kp ${kpv.toFixed(0)}): GPS unreliable`);else if(kpv>=L0.kpCau)bump("CAUTION",`geomagnetic storm (Kp ${kpv.toFixed(0)}): GPS may drift`)}
+ const day=h.is_day==null?true:!!h.is_day;if(!day)bump("CAUTION","dark: check the rules for night flying, use lights");
+ if(!r.length)r.push("calm, dry, good visibility");
+ return {t:h.time,v:lvl,r,w:+w.toFixed(1),g:+gust.toFixed(1),rain,rp,vis,base:base==null?null:Math.round(base),low,temp:t,kp:kpv,day}}
+function evaluateAll(){const d=drone(),ht=+$("#ht").value||120,H=fc.hourly;verdicts=H.time.map((t,i)=>{const h={time:t};for(const k in H)h[k]=H[k][i];return evalHour(h,d,ht,kpAt(t))});
+ const want=$("#when").value;let target=want?want.slice(0,13)+":00":"";const dt=new Date(want);if(want&&dt.getMinutes()>=30){dt.setHours(dt.getHours()+1);target=`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:00`}
+ sel=Math.max(0,verdicts.findIndex(x=>x.t==target));render(target)}
+function windows(){const w=[];let c=[];for(const v of verdicts){if(v.v=="GO"&&v.day)c.push(v);else if(c.length){w.push(c);c=[]}}if(c.length)w.push(c);
+ return w.sort((a,b)=>b.length-a.length||a[0].t.localeCompare(b[0].t)).slice(0,3)}
+
+/* ---------- render ---------- */
+const COL={GO:"var(--go)",CAUTION:"var(--cau)","NO-GO":"var(--no)"};
+const fmt=t=>{const[d,h]=t.split("T");const dd=new Date(d+"T00:00");return dd.toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"})+", "+h}
+function render(target){const d=drone(),z=fc.elevation??0,reg=region(spot.lat,spot.lon,z),wins=windows();
+ const planned=verdicts.findIndex(x=>x.t==target);
+ $("#out").innerHTML=`<p class="place" id="pname">${esc(spot.name)}</p>
+ <div class="meta">${spot.lat.toFixed(4)}, ${spot.lon.toFixed(4)} · ${Math.round(z)} m elevation · ${esc(d.name)}, rated ${d.wind} m/s · flying at ${+$("#ht").value||120} m${demo?" · <b>DEMO DATA</b>":""}</div>
+ ${planned<0&&target?'<div class="err">Your planned time is outside the 3-day forecast; showing the next hour instead.</div>':""}
+ <div id="stamp"></div><div class="tiles" id="tiles"></div>
+ <div class="region">${esc(REGIONS[reg])}</div>
+ <h2>Next 72 hours <span class="meta">· tap an hour · faded = dark</span></h2><div class="strip" id="strip"></div>
+ <h2>Best daylight windows</h2><div id="wins"></div>
+ <div class="note">Planning forecast, not a guarantee: hills and the monsoon change faster than models. <b>Airspace is not checked</b>: confirm green / yellow / red zones on Digital Sky before every flight. Wind ratings are manufacturer figures; check your manual. Forecast: Open-Meteo · Kp: NOAA SWPC.</div>`;
+ $("#strip").innerHTML=verdicts.map((x,i)=>{const hh=+x.t.slice(11,13);return `<button class="h ${x.day?"":"night"}" data-i="${i}" style="background:${COL[x.v]}" aria-label="${esc(fmt(x.t))}: ${x.v}">${hh==0?"<b>"+x.t.slice(8,10)+"</b>":""}${hh}</button>`}).join("");
+ document.querySelectorAll(".h").forEach(b=>b.onclick=()=>show(+b.dataset.i,planned));
+ $("#wins").innerHTML=wins.length?wins.map(w=>`<div class="win" data-t="${w[0].t}"><b>${esc(fmt(w[0].t))}</b> → ${pad(+w[w.length-1].t.slice(11,13)+1)}:00 · ${w.length} h of GO · wind up to ${Math.max(...w.map(x=>x.w))} m/s</div>`).join(""):'<div class="win" style="border-left-color:var(--no)">No daylight GO window in the next 3 days.</div>';
+ document.querySelectorAll(".win[data-t]").forEach(el=>el.onclick=()=>show(verdicts.findIndex(x=>x.t==el.dataset.t),planned));
+ show(sel,planned)}
+function show(i,planned){sel=i;const x=verdicts[i];
+ $("#stamp").innerHTML=`<div class="stamp" style="background:${COL[x.v]}"><div class="v">${x.v}</div><div><div class="when">${esc(fmt(x.t))} IST${i==planned?" · your planned time":""}</div><ul>${x.r.map(r=>`<li>${esc(r)}</li>`).join("")}</ul></div></div>`;
+ const T=[["Wind at "+(+$("#ht").value||120)+" m",x.w+" m/s"],["Gusts",x.g+" m/s"],["Rain",`${x.rain} mm · ${Math.round(x.rp)}%`],["Visibility",x.vis==null?"–":(x.vis/1000).toFixed(1)+" km"],
+  ["Cloud base",x.low<50?"no low cloud":(x.base==null?"–":"~"+x.base+" m")],["Low cloud",Math.round(x.low)+"%"],["Temperature",x.temp==null?"–":Math.round(x.temp)+" °C"],["Kp (GPS)",x.kp==null?"–":x.kp.toFixed(1)]];
+ $("#tiles").innerHTML=T.map(([k,v])=>`<div><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join("");
+ document.querySelectorAll(".h").forEach((b,j)=>{b.classList.toggle("sel",j==i);if(j==i)b.scrollIntoView({block:"nearest",inline:"center"})})}
+
+/* ---------- demo forecast (offline) ---------- */
+function synthetic(){const s=istNow();s.setMinutes(0,0,0);const H={time:[]};VARS.split(",").forEach(k=>H[k]=[]);
+ for(let i=0;i<72;i++){const t=new Date(s.getTime()+i*3600e3),hh=t.getHours(),day=Math.floor(i/24),isDay=hh>=7&&hh<=17?1:0;
+  const temp=hh>=7&&hh<=19?16+11*Math.max(0,Math.sin(Math.PI*(hh-7)/12)):14,fog=hh>=3&&hh<=8&&day!=1,storm=day==1&&hh>=14&&hh<=17;
+  const w10=hh>=10&&hh<=20?2+4.5*Math.max(0,Math.sin(Math.PI*(hh-10)/10)):1.5,k=storm?2.2:1;
+  const v={temperature_2m:+temp.toFixed(1),dew_point_2m:+(temp-(fog?.4:6+4*isDay)).toFixed(1),relative_humidity_2m:fog?98:60,precipitation_probability:storm?80:5,
+   precipitation:storm?4:0,weather_code:storm?95:(fog?45:1),cloud_cover:fog||storm?95:20,cloud_cover_low:fog?95:(storm?60:5),visibility:fog&&hh<=7?700:(fog?3500:18000),
+   wind_speed_10m:+(w10*k).toFixed(1),wind_speed_80m:+(w10*1.35*k).toFixed(1),wind_speed_120m:+(w10*1.45*k).toFixed(1),wind_direction_120m:80,wind_gusts_10m:+(w10*(storm?3:1.6)).toFixed(1),cape:day==1&&hh>=11&&hh<=17?1800:200,is_day:isDay};
+  H.time.push(`${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}T${pad(hh)}:00`);for(const kk in v)H[kk].push(v[kk])}
+ return {hourly:H}}
+}
+</script>
+</body>
+</html>

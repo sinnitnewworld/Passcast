@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Zoji La",
+    "lat": 34.28,
+    "lon": 75.47,
+    "elevation_m": 3528,
+    "region": "Ladakh",
+    "corridor_radius_m": 3000.0,
+    "approach": [],
+    "approach_buffer_m": 1500.0
+  },
+  {
+    "name": "Khardung La",
+    "lat": 34.278,
+    "lon": 77.604,
+    "elevation_m": 5359,
+    "region": "Ladakh",
+    "corridor_radius_m": 3000.0,
+    "approach": [],
+    "approach_buffer_m": 1500.0
+  },
+  {
+    "name": "Chang La",
+    "lat": 34.05,
+    "lon": 77.93,
+    "elevation_m": 5360,
+    "region": "Ladakh",
+    "corridor_radius_m": 3000.0,
+    "approach": [],
+    "approach_buffer_m": 1500.0
+  }
+]

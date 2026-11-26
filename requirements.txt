@@ -1,0 +1,11 @@
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.7
+satpy>=0.50
+pyresample>=1.27
+rasterio>=1.3
+h5py>=3.9
+netCDF4>=1.6
+pytest>=7
+# optional: MODIS reader
+# pyhdf>=0.11
