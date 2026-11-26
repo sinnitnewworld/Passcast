@@ -60,13 +60,49 @@ def cloud_mask(scene, terrain_z_pix, th: Thresholds) -> CloudMaskResult:
     t_ref = clim if from_clim else p
 
     deficit = t_ref - t_eq
+    # Self-calibrating terrain reference: clear-sky BT is not exactly linear in
+    # height (sunlit slopes heat up, plateaus differ). Where enough pixels share
+    # an elevation band, use that band's warm tail as its clear-sky reference;
+    # never let a cloudy band drag the reference far below the lapse model.
+    if np.isfinite(ir).sum() > 500:
+        edges = np.arange(-250, 9250, 500.0)
+        centers, refs = [], []
+        for lo_e, hi_e in zip(edges[:-1], edges[1:]):
+            m = (terrain_z_pix >= lo_e) & (terrain_z_pix < hi_e) & np.isfinite(ir)
+            if m.sum() >= 40:
+                lapse_ref = t_ref - G * (lo_e + 250)
+                centers.append(lo_e + 250)
+                refs.append(max(float(np.percentile(ir[m], th.clear_ref_percentile)), lapse_ref - 8.0))
+        if len(centers) >= 2:
+            ref_z = np.interp(terrain_z_pix, centers, refs,
+                              left=refs[0] + G * (centers[0] - 0), right=refs[-1])
+            # beyond the sampled range fall back to the lapse model
+            ref_z = np.where(terrain_z_pix > centers[-1], refs[-1] - G * (terrain_z_pix - centers[-1]), ref_z)
+            deficit = ref_z - ir
+            tests.append("elevation_binned_reference")
     c_ir = ramp(deficit, th.ir_deficit_low, th.ir_deficit_high)
 
     # ---- thin cirrus: split window --------------------------------------
     c_ci = np.zeros_like(c_ir)
     if scene.get("ir120") is not None:
         btd = ir - scene.get("ir120")
-        thr = np.clip(0.5 + 0.03 * (ir - 250.0), 0.5, 3.0)
+        # Clear moist air at slant view angles also gives a large BT11-BT12.
+        # Calibrate the clear-sky BTD from warm (clearly clear) pixels of this
+        # image, binned by BT11; fall back to a secant-scaled table.
+        sec = 1.0 / np.cos(np.radians(np.clip(scene.vza if scene.vza is not None else 0, 0, 80)))
+        thr = np.clip(0.5 + 0.03 * (ir - 250.0), 0.5, 3.0) * sec ** 0.7
+        warm = (deficit < 3.0) & np.isfinite(btd)
+        if warm.sum() > 300:
+            bins = np.arange(np.nanmin(ir[warm]) - 1, np.nanmax(ir[warm]) + 2, 4.0)
+            cen, base = [], []
+            for a, b in zip(bins[:-1], bins[1:]):
+                m = warm & (ir >= a) & (ir < b)
+                if m.sum() >= 30:
+                    cen.append((a + b) / 2); base.append(float(np.percentile(btd[m], 90)))
+            if len(cen) >= 1:
+                fitted = np.interp(ir, cen, base)
+                thr = np.maximum(fitted + 0.5, 0.5)
+                tests.append("scene_calibrated_cirrus")
         c_ci = ramp(btd - thr, 0.0, 1.5)
         tests.append("split_window_cirrus")
 

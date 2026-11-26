@@ -136,7 +136,7 @@ def tile_profile(lat0, lon0, z):
     return "peninsula"
 
 
-def process_tile(scene, lat0, lon0, z, base_th: Thresholds):
+def process_tile(scene, lat0, lon0, z, base_th: Thresholds, scene_sub_lon=None):
     import dataclasses
     lat, lon = tile_axes(lat0, lon0)
     dem = DEMGrid(lat, lon, z)
@@ -173,6 +173,9 @@ def process_tile(scene, lat0, lon0, z, base_th: Thresholds):
     tree = cKDTree(pts)
     dist, idx = tree.query(np.column_stack([LON.ravel() * kx, LAT.ravel()]))
     nodata = (dist > 2.5 * sub.pixel_km / 111.0).reshape(LON.shape)   # outside the image / off-disk
+    if scene_sub_lon is not None:      # too close to the satellite's horizon to be usable
+        from .satellite import geo_view_angles
+        nodata |= geo_view_angles(LAT, LON, scene_sub_lon)[0] > 80.0
     night_cells = cm.night.ravel()[vflat][idx].reshape(LON.shape)
     pcol = field.prob_column
     flags = np.zeros(z.shape, "uint8")
@@ -233,7 +236,7 @@ def run_national(scene, sat_key, outdir, th: Thresholds | None = None, terrain=N
     for (la0, lo0) in tiles:
         k = key(la0, lo0)
         try:
-            rec, meta = process_tile(scene, la0, lo0, terrain[k], th)
+            rec, meta = process_tile(scene, la0, lo0, terrain[k], th, sd.sub_lon if sd else None)
             (outdir / "run" / f"{k}.bin.gz").write_bytes(pack(rec))
             manifest["tiles"][k] = meta
             ok = (rec["flags"] & FLAG_NODATA) == 0
