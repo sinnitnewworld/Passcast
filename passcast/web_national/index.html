@@ -61,6 +61,8 @@ h2{font-size:15px;margin:18px 0 6px}ul{margin:0 0 0 18px;padding:0}li{margin:3px
 .spin{display:inline-block;width:18px;height:18px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:s 1s linear infinite;vertical-align:-4px;margin-right:8px}
 @keyframes s{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.spin{animation:none}}
 .leaflet-container{font:inherit}
+.plain{background:var(--panel);border:2px solid var(--accent);border-radius:12px;padding:10px 14px;margin-top:12px}.plain ul{margin:6px 0 0 18px}.plain p{margin:8px 0 0}
+.gloss dl{margin:8px 0 0;display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr);gap:4px 12px;font-size:14px}.gloss dt{font-weight:700}.gloss dd{margin:0}
 .chk{display:flex;align-items:center;gap:8px;min-height:44px}.chk input{width:22px;height:22px;min-height:0;flex:none}
 details{margin-top:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px}summary{cursor:pointer;font-weight:600;font-size:14px;min-height:28px}
 .checks{display:grid;gap:6px;margin-top:6px}.ck{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
@@ -303,7 +305,7 @@ function addStop(lat,lon,name,doRev,via){const s={lat,lon,name:name||`${lat.toFi
  if(doRev)reverse(lat,lon).then(n=>{if(n){s.name=n;renderStops()}});renderStops()}
 function renderStops(){const main=stops.map((s,i)=>({s,i})).filter(x=>!x.s.via||stops.length<=10);
  const viaN=stops.filter(s=>s.via).length;let letter=0;
- $("#stops").innerHTML=(main.map(({s,i})=>`<div class="stop"><b>${s.via?"·":String.fromCharCode(65+Math.min(letter++,25))}</b><span>${esc(s.name)}</span><button data-i="${i}" aria-label="Remove">Remove</button></div>`).join("")
+ $("#stops").innerHTML=(main.map(({s,i})=>`<div class="stop"><b>${s.via?"·":String.fromCharCode(65+Math.min(letter++,25))}</b><span>${esc(s.name)} <small class="hint">${s.lat.toFixed(3)}, ${s.lon.toFixed(3)}</small></span><button data-i="${i}" aria-label="Remove">Remove</button></div>`).join("")
   +(stops.length>10&&viaN?`<div class="hint">+ ${viaN} waypoints along the track</div>`:""))||'<div class="hint">No stops yet. Search, tap the map, or import a GPX/KML track.</div>';
  document.querySelectorAll(".stop button").forEach(b=>b.onclick=()=>{stops.splice(+b.dataset.i,1);renderStops()});
  if(stopLayer){stopLayer.clearLayers();let L2=0;stops.forEach(s=>{if(!s.via)L.marker([s.lat,s.lon],{title:s.name}).bindTooltip(String.fromCharCode(65+Math.min(L2++,25)),{permanent:true,direction:"top"}).addTo(stopLayer)});
@@ -387,6 +389,7 @@ function renderLow(P,v,wx,dep){const pts=P.pts,rules=P.rules,ac=P.ac,u=P.u,ist=m
  <div class="stamp" style="background:${COL[v]}"><div class="n">${v}</div><div><div class="l">${VLAB[v]}</div><div class="c">${v==0?"at least one rule is not met":v==.5?"no rule broken, but some items need your judgement or could not be checked":"every rule checked here is met"} · see the checklist</div></div></div>
  <div class="tiles"><div><b>${P.dist.toFixed(1)} km</b><span>valley route</span></div><div><b>${Math.round(P.flightMin)} min</b><span>at ${fk(u.lowKt)} kt (no wind)</span></div><div><b>${fk(Math.max(...pts.map(p=>p.alt)))} ft</b><span>highest altitude</span></div>
   <div><b>${minW==null?"–":minW>=5400?"> 5 km":fk(minW)+" m"}</b><span>narrowest valley at your height</span></div><div><b>${noTurn.toFixed(1)} km</b><span>no room to turn back</span></div><div><b>${under.toFixed(1)} km</b><span>under/near cloud</span></div></div>
+ ${plainBox(P,checks)}${GLOSS}
  <h2>Vertical profile</h2><div class="fig"><svg id="prof" role="img" aria-label="Low-level vertical profile"></svg></div>
  <div class="legend"><span><i class="sw" style="background:#a8551b"></i>ground under the track (90 m)</span><span><i class="sw" style="background:none;border:1px dashed #a8551b"></i>highest ground within ${fk(u.latM)} m</span><span><i class="sw" style="background:#d6127e"></i>planned altitude</span><span><i class="sw" style="background:#d99300"></i>no turn-back room / under cloud</span></div>
  <h2>Rules checklist</h2><div class="checks">${checks.map(c=>`<div class="ck"><span class="b ${c.status}">${SLAB[c.status]}</span><span class="r">${esc(c.rule)}</span><span class="d">${esc(c.detail)}</span><span class="s">${esc(c.src)}</span></div>`).join("")}</div>
@@ -407,6 +410,9 @@ function renderLow(P,v,wx,dep){const pts=P.pts,rules=P.rules,ac=P.ac,u=P.u,ist=m
   const sf=(ymax-lo)/FT>8000?2000:(ymax-lo)/FT>3000?1000:500;for(let f=Math.ceil(lo/FT/sf)*sf;ft2m(f)<ymax;f+=sf){const y=Y(ft2m(f));h+=`<line x1="${pl}" x2="${W-pr}" y1="${y}" y2="${y}" stroke="currentColor" opacity=".08"/><text x="${pl-5}" y="${y+4}" text-anchor="end" font-size="11" fill="currentColor" opacity=".7">${W<520?(f/1000).toFixed(1)+"k":f.toLocaleString()}</text>`}
   h+=`<text x="${W-pr}" y="${H-7}" text-anchor="end" font-size="11" fill="currentColor" opacity=".7">${dist.toFixed(1)} km</text><text x="${pl}" y="${H-7}" font-size="11" fill="currentColor" opacity=".7">ft · 0 km</text>`;svg.innerHTML=h};
  new ResizeObserver(draw).observe(svg);draw()}
+function plainBox(P,checks){const ps=PL.plainSummary(checks,P);if(!ps.reasons.length&&!ps.tips.length)return "";
+ return `<div class="plain"><b>${ps.reasons.length?"Why it's NO-GO, in plain words":"What to do"}</b>${ps.reasons.length?`<ul>${[...new Set(ps.reasons)].map(r=>`<li>${esc(r)}</li>`).join("")}</ul>`:""}${ps.tips.length?`<p><b>Try:</b> ${ps.tips.map(esc).join(" ")}</p>`:""}</div>`}
+const GLOSS=`<details class="gloss"><summary>What these words mean</summary><dl>${PL.GLOSSARY.map(([a,b])=>`<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join("")}</dl></details>`;
 let lastPlan=null;
 async function rateRoute(){if(stops.length<2)return err("Add at least two stops.");if(!M)return err("Satellite data hasn't loaded yet.");
  if($("#low").checked)return rateLow();
@@ -443,6 +449,7 @@ function render(P,v,wx,dep){const S=P.S,rules=P.rules,ac=P.ac,first=stops[0].nam
  <div class="stamp" style="background:${COL[v]}"><div class="n">${v}</div><div><div class="l">${VLAB[v]}</div><div class="c">${v==0?"at least one rule is not met":v==.5?"no rule broken, but some items need your judgement or could not be checked":"every rule checked here is met"} · see the checklist</div></div></div>
  <div class="tiles"><div><b>${Math.round(P.dist)} km</b><span>route length</span></div><div><b>${mins} min</b><span>flight time${wx?" (forecast wind)":" (no wind)"}</span></div><div><b>${hi?fk(hi)+" ft":"–"}</b><span>highest altitude</span></div>
   <div><b>${fmtFt(peak)}</b><span>highest terrain on track</span></div><div><b>${fmtFt(Math.max(...S.map(p=>p.zR+p.clear)))}</b><span>max minimum altitude</span></div><div><b>${legs.length}</b><span>profile segments</span></div></div>
+ ${plainBox(P,checks)}${GLOSS}
  <h2>Vertical profile</h2><div class="fig"><svg id="prof" role="img" aria-label="Route vertical profile"></svg></div>
  <div class="legend"><span><i class="sw" style="background:#a8551b"></i>terrain (peak in each cell)</span><span><i class="sw" style="background:none;border:1px dashed #a8551b"></i>minimum altitude</span><span><i class="sw" style="background:rgba(200,210,220,.9)"></i>cloud</span><span><i class="sw" style="background:#d6127e"></i>${P.planned?"your altitude":"planned profile"}</span><span><i class="sw" style="background:none;border:1px dashed #d64545"></i>${rules.vfrMaxM!=null?"FL150 / aircraft limit":"aircraft limit"}</span></div>
  <h2>Rules checklist</h2><div class="checks">${checks.map(c=>`<div class="ck"><span class="b ${c.status}">${SLAB[c.status]}</span><span class="r">${esc(c.rule)}</span><span class="d">${esc(c.detail)}</span><span class="s">${esc(c.src)}</span></div>`).join("")}</div>

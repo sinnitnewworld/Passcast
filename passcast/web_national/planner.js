@@ -217,7 +217,9 @@ function optimise(S, rules, ac, u, check, gsKmh) {
   const lo = Math.max(0, Math.floor(m2ft(Math.min(...S.map(p => p.zg))) / step) - 1);
   const hiFt = Math.min(ac.ceil, rules.vfrMaxM != null ? m2ft(rules.vfrMaxM) : Infinity);
   const hi = Math.floor(hiFt / step), nL = hi - lo + 1;
-  if (nL <= 0) return { fail: { i: 0, why: "aircraft ceiling below the terrain" } };
+  if (nL <= 0) return { fail: { i: 0, km: 0, why: "aircraft ceiling below the terrain" } };
+  for (const [i, nm] of [[0, "departure"], [N - 1, "destination"]]) if (m2ft(S[i].zcell) > hiFt)
+    return { fail: { i, km: S[i].km, code: "endhigh", why: `the ${nm} (about ${Math.round(m2ft(S[i].zcell)).toLocaleString()} ft) is higher than the highest altitude allowed here (${Math.round(hiFt).toLocaleString()} ft${rules.vfrMaxM != null && hiFt <= 15000 ? ": civil VFR may not fly above FL150" : ": the aircraft limit"})` } };
   const ftOf = L => (lo + L) * step, idx = (i, L) => i * nL + L;
   const ok = new Uint8Array(N * nL), why = new Uint8Array(N * nL), top = new Uint8Array(N * nL);
   for (let i = 0; i < N; i++) for (let L = 0; L < nL; L++) { const inf = {}; const b = check(i, ftOf(L), inf); why[idx(i, L)] = b; ok[idx(i, L)] = b === 0; top[idx(i, L)] = inf.onTop ? 1 : 0; }
@@ -541,7 +543,8 @@ function planLow(opts) {
       if (why[1]) r.push(`the higher ground needs more than ${Math.round(m2ft(capM)).toLocaleString()} ft (${rules.vfrMaxM != null && rules.vfrMaxM < ft2m(ac.ceil) ? "FL150 for VFR" : "the aircraft limit"})`);
       if (why[2]) r.push("part of the area has no satellite data");
       const w = r.join("; and ") || "no connected valley";
-      return { error: `No low-level path from ${a.name} to ${b.name} at ${Math.round(u.aglFt)} ft above the ground with ${latM} m from the valley walls: ${w}.` }; }
+      const tip = rules.mode === "vfr" && why[1] && rules.vfrMaxM < ft2m(ac.ceil) ? " Civil visual flights may not go above 15,000 ft (FL150). If this is a military helicopter, set Flight rules to \u201cMilitary / State aircraft\u201d." : why[3] ? " Satellites can't see under cloud, so a valley under cloud is never treated as clear." : "";
+      return { error: `No low-level path from ${a.name} to ${b.name} at ${Math.round(u.aglFt)} ft above the ground with ${latM} m from the valley walls: ${w}.${tip}` }; }
     const cells = []; for (let x = goal; x !== -1; x = prev[x]) cells.push(x); cells.reverse();
     for (const x of (l ? cells.slice(1) : cells)) { const i = (x / nx) | 0, j = x % nx;
       pts.push({ lat: la0 + (i + .5) * res, lon: lo0 + (j + .5) * res, z: z[x], wall: wall[x], room: room[x] + marginM, Hreq: H[x], under: !!under[x], leg: l }); }
@@ -607,7 +610,53 @@ function evaluateLow(P, wx, imageTime, depTime) {
   return C.concat(tail);
 }
 
-const API = { planLow, evaluateLow, SRC, AIRCRAFT, BAD, rulesFor, hav, bearing, sunTimes, levelOK, nearBoundary, rocAt, sampleRoute, buildRaster, cellsWithin, prepare,
+/* ---------------- plain-language summary ---------------- */
+const PLAIN = {
+  profile: "No height to fly at keeps you clear of the ground, the cloud and the limits all the way.",
+  data: "The satellite has no usable picture for part of the route.",
+  terrain: "At your planned height you would be too close to the ground in places.",
+  ceiling: "The route needs more height than this aircraft can reach.",
+  vfrmax: "Civil visual flights may not go above 15,000 ft (FL150), and this route needs more.",
+  vmc: "You would be in or too close to cloud.",
+  ice: "You would be inside cloud where it is below freezing, so ice could form on the aircraft.",
+  oxy: "You would be high enough to need oxygen, and it is not marked as carried.",
+  day: "Civil visual flights are only allowed from 20 min before sunrise to 20 min after sunset.",
+  vis: "The forecast visibility is below the minimum for visual flight.",
+  lowlegal: "Civil visual flights must stay at least 500 ft above the ground.",
+  lowcap: "The valleys still need more height than is allowed.",
+};
+function plainSummary(checks, P) {
+  const f = checks.filter(c => c.status === "FAIL"), out = [];
+  for (const c of f) { let t = PLAIN[c.id] || c.rule;
+    if (c.id === "profile" && P && P.fail && P.fail.code === "endhigh") t = `The ${P.fail.why.replace(/^the /, "")}.`;
+    out.push(t); }
+  const tips = [];
+  if (P && P.rules && P.rules.mode === "vfr" && f.some(c => ["vfrmax", "profile", "lowcap"].includes(c.id)) && P.fail && /FL150|15,000/.test(P.fail.why || ""))
+    tips.push("For a military helicopter, set Flight rules to “Military / State aircraft”: the 15,000 ft limit is a civil rule.");
+  if (f.some(c => c.id === "oxy")) tips.push("Tick “Oxygen carried for everyone on board” if you carry it.");
+  if (f.some(c => c.id === "day")) tips.push("Change the departure time to daylight.");
+  if (f.some(c => ["profile", "vmc", "lowcap"].includes(c.id)) && !tips.length) tips.push("Try “Suggest a valley route”, a different time, or the low-level option.");
+  return { reasons: out, tips };
+}
+
+const GLOSSARY = [
+  ["GO / CAUTION / NO-GO", "1 = every rule this tool checks is met. 0.5 = nothing broken, but something needs your judgement or couldn't be checked. 0 = at least one rule is broken."],
+  ["VFR / IFR", "Visual flight (pilot looks outside, must stay clear of cloud) / instrument flight (may fly in cloud, needs approved aircraft, crew and routes)."],
+  ["FL150", "Flight level 150, about 15,000 ft. Civil visual flights in India may not go higher."],
+  ["VMC", "Weather good enough for visual flight: enough visibility and enough distance from cloud."],
+  ["Terrain clearance", "How far above the highest ground near your track you must stay."],
+  ["Above ground (AGL)", "Height above the ground directly below, not above sea level."],
+  ["QNH", "Altimeter setting that makes it read height above sea level."],
+  ["Semicircular rule", "Flying east you use odd thousands of feet, flying west even (plus 500 ft for visual flights), so traffic in opposite directions is separated."],
+  ["Orbit climb", "Climbing in circles over one spot until high enough to continue."],
+  ["Commit point", "The last place you can still turn back; after it the valley is too narrow to turn."],
+  ["HOGE", "Hover out of ground effect: the highest place the helicopter can hover well above the ground at its weight."],
+  ["Density altitude", "How high the air 'feels' to the engine and rotor; hot air makes it higher and performance worse."],
+  ["Freezing level", "The height where the temperature drops to 0 °C; in cloud above it, ice can form."],
+  ["NOTAM / ADC", "Notices of temporary airspace changes / Air Defence Clearance needed to fly in Indian air defence zones."],
+];
+
+const API = { plainSummary, GLOSSARY, planLow, evaluateLow, SRC, AIRCRAFT, BAD, rulesFor, hav, bearing, sunTimes, levelOK, nearBoundary, rocAt, sampleRoute, buildRaster, cellsWithin, prepare,
   makeChecker, optimise, fixedProfile, plan, evaluate, verdict, notChecked, levAt, wxNear, groundSpeedKt, m2ft, ft2m };
 if (typeof module !== "undefined" && module.exports) module.exports = API; else root.Planner = API;
 })(typeof window !== "undefined" ? window : globalThis);
