@@ -475,7 +475,139 @@ function notChecked(rules) {
   return L;
 }
 
-const API = { SRC, AIRCRAFT, BAD, rulesFor, hav, bearing, sunTimes, levelOK, nearBoundary, rocAt, sampleRoute, buildRaster, cellsWithin, prepare,
+/* ---------------- low-level (valley) planning on 90 m terrain ----------------
+   The aircraft follows valleys at a set height above the ground:
+     minimum altitude at a cell = highest terrain within the lateral clearance
+                                  + terrain-data margin + height above ground
+   - path: least-cost search on the 90 m grid (cost rises with that altitude, so
+     the path keeps to valley floors and low passes; cloud that reaches the flight
+     level blocks a cell);
+   - profile: climbs start early enough for the aircraft's climb rate at low speed;
+   - turn-back room: at each point, is there a circle of (turn radius + lateral
+     clearance) clear of terrain at the flight altitude? Where not, the plan names
+     the commit point. */
+function planLow(opts) {
+  const { stops, getZ, getCell, u, wx, imageTime, depTime } = opts, ac = Object.assign({}, opts.ac), rules = rulesFor(u);
+  if (rules.mode === "ifr") return { error: "Low-level flying is a visual operation: choose Civil VFR or Military." };
+  const res = 1 / 1200, marginM = ft2m(u.demMarginFt), aglM = ft2m(u.aglFt), latM = u.latM, vms = u.lowKt * 0.51444;
+  const turnR = vms * vms / (9.81 * Math.tan(30 * D)), roomM = turnR + latM;
+  const capM = Math.min(ft2m(ac.ceil), rules.vfrMaxM ?? Infinity);
+  const main = stops.filter(s => !s.via); if (main.length < 2) return { error: "Add at least two stops." };
+  const pts = [];
+  for (let l = 0; l < main.length - 1; l++) {
+    const a = main[l], b = main[l + 1], pad = 0.04 + roomM / 111000;
+    const la0 = Math.min(a.lat, b.lat) - pad, la1 = Math.max(a.lat, b.lat) + pad, mid = (a.lat + b.lat) / 2;
+    const lo0 = Math.min(a.lon, b.lon) - pad / Math.cos(mid * D), lo1 = Math.max(a.lon, b.lon) + pad / Math.cos(mid * D);
+    const ny = Math.ceil((la1 - la0) / res), nx = Math.ceil((lo1 - lo0) / res), n = nx * ny;
+    if (n > 3.2e6) return { error: `Leg ${a.name} → ${b.name} is too long for a low-level search. Keep each leg under about 100 km by adding stops.` };
+    const z = new Float32Array(n); let miss = 0;
+    for (let i = 0; i < ny; i++) for (let j = 0; j < nx; j++) { const v = getZ(la0 + (i + .5) * res, lo0 + (j + .5) * res); if (v == null) { z[i * nx + j] = NaN; miss++; } else z[i * nx + j] = v; }
+    if (miss > n * .02) return { error: "No 90 m terrain for this area. Low-level mode covers the Himalaya and the Northeast (terrain above 2,000 m)." };
+    const kx = Math.cos(mid * D) * 111320 * res, ky = 111320 * res;
+    // separable max filter (rectangle: slightly conservative versus a circle)
+    const maxf = (src, rm) => { const ri = Math.ceil(rm / ky), rj = Math.ceil(rm / kx), t = new Float32Array(n), o = new Float32Array(n);
+      for (let i = 0; i < ny; i++) for (let j = 0; j < nx; j++) { let m = -1e9; for (let d = -rj; d <= rj; d++) { const jj = j + d; if (jj >= 0 && jj < nx) { const v = src[i * nx + jj]; if (v > m) m = v; } } t[i * nx + j] = m; }
+      for (let i = 0; i < ny; i++) for (let j = 0; j < nx; j++) { let m = -1e9; for (let d = -ri; d <= ri; d++) { const ii = i + d; if (ii >= 0 && ii < ny) { const v = t[ii * nx + j]; if (v > m) m = v; } } o[i * nx + j] = m; }
+      return o; };
+    const zf = Float32Array.from(z, v => isNaN(v) ? 9000 : v), wall = maxf(zf, latM), room = maxf(zf, roomM);
+    // cloud from the 1 km satellite cells
+    const c0 = Math.floor(la0 / .01), d0 = Math.floor(lo0 / .01), cny = Math.ceil(la1 / .01) - c0 + 1, cnx = Math.ceil(lo1 / .01) - d0 + 1, cl = new Array(cny * cnx);
+    for (let i = 0; i < cny; i++) for (let j = 0; j < cnx; j++) { const c = getCell((c0 + i + .5) * .01, (d0 + j + .5) * .01); cl[i * cnx + j] = c && !c.nodata && c.cloud ? { base: c.base > 0 ? c.base : 0, top: c.top > 0 ? c.top : Infinity } : c && !c.nodata ? null : "nd"; }
+    const cloudAt = (la, lo) => { const i = Math.floor(la / .01) - c0, j = Math.floor(lo / .01) - d0; return i >= 0 && j >= 0 && i < cny && j < cnx ? cl[i * cnx + j] : "nd"; };
+    const near = (la, lo) => { for (let di = -2; di <= 2; di++) for (let dj = -2; dj <= 2; dj++) { const c = cloudAt(la + di * .01, lo + dj * .01); if (c && c !== "nd") return true; } return false; };
+    const H = new Float32Array(n), blk = new Uint8Array(n), under = new Uint8Array(n);
+    for (let i = 0; i < ny; i++) for (let j = 0; j < nx; j++) { const k = i * nx + j, la = la0 + (i + .5) * res, lo = lo0 + (j + .5) * res;
+      H[k] = wall[k] + marginM + aglM;
+      if (isNaN(z[k])) { blk[k] = 1; continue; }
+      const c = cloudAt(la, lo);
+      if (c === "nd") { blk[k] = 2; continue; }
+      if (c && c.base <= H[k]) { blk[k] = 3; continue; }      // cloud reaches the flight level: not clear of cloud
+      if (H[k] > capM) { blk[k] = 1; continue; }
+      if (c || near(la, lo)) under[k] = 1; }
+    const cell = (la, lo) => [Math.min(ny - 1, Math.max(0, Math.floor((la - la0) / res))), Math.min(nx - 1, Math.max(0, Math.floor((lo - lo0) / res)))];
+    const [si, sj] = cell(a.lat, a.lon), [gi, gj] = cell(b.lat, b.lon), s0 = si * nx + sj, goal = gi * nx + gj;
+    const ref = Math.min(H[s0], H[goal]), g = new Float32Array(n).fill(Infinity), prev = new Int32Array(n).fill(-1), done = new Uint8Array(n), heap = [];
+    const push = (f, x) => { heap.push([f, x]); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+    const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l2 = 2 * i + 1, r2 = l2 + 1; let m = i; if (l2 < heap.length && heap[l2][0] < heap[m][0]) m = l2; if (r2 < heap.length && heap[r2][0] < heap[m][0]) m = r2; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+    const hst = (i, j) => Math.hypot((i - gi) * ky, (j - gj) * kx);
+    g[s0] = 0; push(hst(si, sj), s0); let found = false, it = 0; const why = [0, 0, 0, 0];
+    while (heap.length && it++ < 8e6) { const [, x] = pop(); if (done[x]) continue; done[x] = 1; if (x === goal) { found = true; break; } const i = (x / nx) | 0, j = x % nx;
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) { if (!di && !dj) continue; const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= ny || jj >= nx) continue; const m = ii * nx + jj; if (done[m]) continue;
+        if (blk[m] && m !== goal) { why[blk[m]]++; continue; }
+        const d = Math.hypot(di * ky, dj * kx), c = d * (1 + 3 * Math.max(0, H[m] - ref) / 1000 + 2 * under[m]);
+        if (g[x] + c < g[m]) { g[m] = g[x] + c; prev[m] = x; push(g[m] + hst(ii, jj), m); } } }
+    if (!found) { const r = [];
+      if (why[3]) r.push("cloud reaches the flight level in the valleys");
+      if (why[1]) r.push(`the higher ground needs more than ${Math.round(m2ft(capM)).toLocaleString()} ft (${rules.vfrMaxM != null && rules.vfrMaxM < ft2m(ac.ceil) ? "FL150 for VFR" : "the aircraft limit"})`);
+      if (why[2]) r.push("part of the area has no satellite data");
+      const w = r.join("; and ") || "no connected valley";
+      return { error: `No low-level path from ${a.name} to ${b.name} at ${Math.round(u.aglFt)} ft above the ground with ${latM} m from the valley walls: ${w}.` }; }
+    const cells = []; for (let x = goal; x !== -1; x = prev[x]) cells.push(x); cells.reverse();
+    for (const x of (l ? cells.slice(1) : cells)) { const i = (x / nx) | 0, j = x % nx;
+      pts.push({ lat: la0 + (i + .5) * res, lon: lo0 + (j + .5) * res, z: z[x], wall: wall[x], room: room[x] + marginM, Hreq: H[x], under: !!under[x], leg: l }); }
+  }
+  // distances, track
+  let dist = 0; pts.forEach((p, i) => { if (i) dist += hav([pts[i - 1].lat, pts[i - 1].lon], [p.lat, p.lon]); p.km = dist; p.trk = i ? bearing([pts[i - 1].lat, pts[i - 1].lon], [p.lat, p.lon]) : 0; });
+  // vertical profile with climb/descent limits at low-level speed
+  const N = pts.length, H = pts.map(p => p.Hreq), stepS = i => i ? (pts[i].km - pts[i - 1].km) * 1000 / vms : 0;
+  const climbM = (i, h) => Math.min(u.climbFpm, rocAt(ac, m2ft(h))) * FT / 60 * stepS(i), descM = i => u.descFpm * FT / 60 * stepS(i);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = N - 2; i >= 0; i--) H[i] = Math.max(H[i], H[i + 1] - climbM(i + 1, H[i + 1]));
+    for (let i = 1; i < N; i++) H[i] = Math.max(H[i], H[i - 1] - descM(i)); }
+  const events = [];
+  // departure: climbing from the ground at A, how high must we be before leaving? (orbit over A)
+  let need = 0, acc = pts[0].z; for (let i = 1; i < N; i++) { acc += climbM(i, acc); need = Math.max(need, H[i] - acc); }
+  if (need > 30) events.push({ type: "orbit-up", i: 0, from: Math.round(m2ft(pts[0].z) / 100) * 100, to: Math.ceil(m2ft(pts[0].z + need + aglM) / 100) * 100 });
+  let needB = 0, accB = pts[N - 1].z; for (let i = N - 2; i >= 0; i--) { accB += descM(i + 1); needB = Math.max(needB, H[i] - accB); }
+  if (needB > 30) events.push({ type: "orbit-down", i: N - 1, from: Math.ceil(m2ft(pts[N - 1].z + needB) / 100) * 100, to: Math.round(m2ft(pts[N - 1].z) / 100) * 100 });
+  pts.forEach((p, i) => { p.H = H[i]; p.alt = m2ft(H[i]); p.agl = m2ft(H[i] - p.z); p.turn = p.room < H[i]; });
+  // valley width at flight altitude (every ~0.5 km), from the terrain grid along the cross-track line
+  const zAt = (la, lo) => { const v = getZ(la, lo); return v == null ? 9000 : v; };
+  pts.forEach((p, i) => { if (i % 6 && i !== N - 1) return; const t = (p.trk + 90) * D; let w = 0;
+    for (const sgn of [1, -1]) for (let k = 1; k <= 60; k++) { const dm = k * 45 * sgn, la = p.lat + dm * Math.cos(t) / 111320, lo = p.lon + dm * Math.sin(t) / (111320 * Math.cos(p.lat * D));
+      if (zAt(la, lo) + marginM >= p.H) break; w += 45; }
+    p.width = w; });
+  const out = { low: true, pts, dist, rules, ac, u, events, turnR, roomM, marginM };
+  // timing
+  out.flightMin = dist * 1000 / vms / 60 + events.reduce((a, e) => a + Math.abs(e.to - e.from) / (e.type === "orbit-up" ? Math.min(u.climbFpm, rocAt(ac, e.to)) : u.descFpm), 0);
+  out.checks = evaluateLow(out, wx, imageTime, depTime);
+  return out;
+}
+
+function evaluateLow(P, wx, imageTime, depTime) {
+  const { pts, rules, ac, u } = P, C = [], add = (id, status, rule, detail, src) => C.push({ id, status, rule, detail, src }), f = n => Math.round(n).toLocaleString();
+  const runs = pred => { const r = []; let cur = null; for (const p of pts) { if (pred(p)) { if (cur && p.km - cur.b <= .3) cur.b = p.km; else { cur = { a: p.km, b: p.km }; r.push(cur); } } } return r; };
+  const fr = r => r.slice(0, 5).map(x => x.b - x.a < .2 ? `km ${x.a.toFixed(1)}` : `km ${x.a.toFixed(1)}–${x.b.toFixed(1)}`).join(", ") + (r.length > 5 ? ` and ${r.length - 5} more` : "");
+  const src = rules.mode === "mil" ? SRC.SOP : SRC.VFR_HT;
+  add("lowterrain", "PASS", "Height above the ground and distance from the valley walls",
+    `Flies at least ${f(u.aglFt)} ft above the ground, plus ${f(u.demMarginFt)} ft for terrain-data error, and keeps ${f(u.latM)} m from ground that rises to the same height. Lowest height above the valley floor on the route: ${f(Math.min(...pts.map(p => p.agl)))} ft.`, src);
+  if (rules.mode === "vfr") add("lowlegal", u.aglFt >= 500 ? "PASS" : "FAIL", "VFR minimum height", u.aglFt >= 500 ? "500 ft above the ground or higher, as required away from settlements." : "Below 500 ft above the ground is not permitted for VFR without authorisation.", SRC.VFR_HT);
+  add("settle", "NOT_CHECKED", "Settlements under the route", "Over villages and towns the VFR minimum is 1,000 ft above the highest obstacle within 600 m. Settlements are not in this data: check the route on a map.", SRC.VFR_HT);
+  const hi = Math.max(...pts.map(p => p.H)), capM = Math.min(ft2m(ac.ceil), rules.vfrMaxM ?? Infinity);
+  add("lowcap", hi <= capM + 1 ? "PASS" : "FAIL", rules.vfrMaxM != null ? "Within FL150 and the aircraft's limit" : "Within the aircraft's limit", `Highest altitude ${f(m2ft(hi))} ft.`, rules.vfrMaxM != null ? SRC.VFR_AIP : SRC.AC);
+  const noTurn = runs(p => !p.turn).filter(r => r.b - r.a >= .3);
+  add("turn", noTurn.length ? "CAUTION" : "PASS", "Room to turn back",
+    noTurn.length ? `No room for a 180° turn at ${Math.round(u.lowKt)} kt (needs about ${f(2 * P.roomM)} m clear at your height) at ${fr(noTurn)}. Decide to continue or turn back before each of these stretches.` :
+      `A 180° turn at ${Math.round(u.lowKt)} kt (about ${f(2 * P.turnR)} m across at 30° bank, plus ${f(u.latM)} m each side) fits along the whole route.`, "Turn radius at 30° bank: v² / (g·tan 30°)");
+  const und = pts.filter(p => p.under).length, undKm = runs(p => p.under);
+  add("lowcloud", und ? "CAUTION" : "PASS", "Cloud in or over the valleys",
+    und ? `About ${f(und * .09)} km is under or beside cloud the satellite can't see beneath (pixel 4 km): the valley may be closed in at ${fr(undKm)}. Confirm with a met report or ceilometer before committing.` :
+      "No cloud detected within 2 km of the route in the latest image. Fog or cloud smaller than the satellite's 4 km pixel can still be missed.", "PassCast satellite data");
+  add("wires", "CAUTION", "Wires, cables and ropeways", "Not in any terrain data. Valleys often have power lines and ropeways crossing them at low height: brief them from local knowledge and charts.", "—");
+  add("vwind", "NOT_CHECKED", "Valley winds and downdrafts", "Forecast models work at about 10 km and do not resolve winds inside valleys.", "—");
+  const climbs = P.events.filter(e => e.type === "orbit-up");
+  add("lowperf", "PASS", "Climbs within aircraft performance", `Climbs at no more than ${f(u.climbFpm)} ft/min (or the aircraft's estimated maximum at that height) at ${Math.round(u.lowKt)} kt.${climbs.length ? ` Needs a climb over the departure to ${f(climbs[0].to)} ft first.` : ""}`, SRC.AC);
+  // oxygen
+  let t10 = 0, t13 = 0; pts.forEach((p, i) => { if (!i) return; const m = (p.km - pts[i - 1].km) * 1000 / (u.lowKt * .51444) / 60; if (p.alt > 10000) t10 += m; if (p.alt > 13000) t13 += m; });
+  if (t13 > 0) add("oxy", u.oxygen ? "PASS" : "FAIL", "Supplemental oxygen", `${Math.round(t13)} min above 13,000 ft: oxygen needed for everyone${u.oxygen ? " (marked as carried)" : "; not marked as carried"}.`, SRC.OXY);
+  else if (t10 > 30) add("oxy", u.oxygen ? "PASS" : "CAUTION", "Supplemental oxygen", `${Math.round(t10)} min between 10,000 and 13,000 ft.`, SRC.OXY);
+  // shared tail: daylight, forecast, picture age
+  const fake = { S: pts.map(p => ({ ...p, zg: p.z, zR: p.wall, cl: [], trueM: p.H })), rules, ac, u, prof: null, dist: P.dist, fail: null, planned: true, flightMin: P.flightMin, gsKmh: pts.map(() => u.lowKt * 1.852), dev: null, corrAt: () => 0 };
+  const tail = evaluate(fake, wx, imageTime, depTime).filter(c => ["day", "vis", "wx", "wave", "hover0", "hover" + (pts.length - 1), "age"].includes(c.id));
+  return C.concat(tail);
+}
+
+const API = { planLow, evaluateLow, SRC, AIRCRAFT, BAD, rulesFor, hav, bearing, sunTimes, levelOK, nearBoundary, rocAt, sampleRoute, buildRaster, cellsWithin, prepare,
   makeChecker, optimise, fixedProfile, plan, evaluate, verdict, notChecked, levAt, wxNear, groundSpeedKt, m2ft, ft2m };
 if (typeof module !== "undefined" && module.exports) module.exports = API; else root.Planner = API;
 })(typeof window !== "undefined" ? window : globalThis);

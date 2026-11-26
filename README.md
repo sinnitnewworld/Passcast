@@ -67,6 +67,12 @@ Every run publishes two pages:
   * **Checks:** cold-temperature altimeter correction (ICAO Doc 8168, 4% per 10 °C); oxygen time above 10,000 and 13,000 ft (ICAO Annex 6); winds at ridge level of 25 kt or more (mountain-wave caution); density altitude against HOGE at both ends; age of the satellite picture against the departure time; satellite data quality.
   * **Verdict:** each rule is shown as PASS, FAIL, CAUTION, NOT CHECKED or NOTE, with its source. 0 (NO-GO) if any rule fails; 0.5 (CAUTION) if anything needs judgement or could not be checked; 1 (GO) only when every check passes.
   * **Not checked, and listed on every plan:** airspace (prohibited, restricted and danger areas), NOTAMs, Air Defence Clearance, official IMD met, obstacles and wires, fuel, weight and balance, and landing sites.
+  * **Low-level mode (fly the valleys)** uses 90 m terrain tiles for the mountain belt (`terrain90/`, built from Copernicus GLO-90 for every degree cell above 2,000 m, north of 26°N).
+    * **Path search:** a least-cost search on the 90 m grid. The minimum altitude at each cell is the highest ground within the wall distance, plus the terrain-data margin (default 300 ft), plus the height above ground. Cost rises with that altitude, so the path keeps to valley floors and passes. Cloud whose estimated base is at or below the flight level blocks a cell.
+    * **Climbs:** limited by the aircraft's climb rate at the low-level speed.
+    * **Turn-back room:** a 180° turn at 30° bank, plus the wall distance, is checked at every point, and the stretches without room are named so the pilot knows the commit point.
+    * **Other outputs:** valley width at the flight altitude, waypoints and a GPX export.
+    * **Limits, stated on every plan:** satellites cannot confirm a narrow valley clear under cloud (4 km pixel); wires, ropeways and settlements are not in the data; valley winds are not modelled.
   * **Route inputs:** the valley-route search uses the same rule set; you can also import a GPX/KML track. The forecast is Open-Meteo (a model), clearly labelled as not an approved met source.
 * Location input accepts place names, coordinates (decimal or degrees/minutes/seconds) and full Google Maps links. Apartment names are often missing from OpenStreetMap, so paste coordinates for those.
 * `sites.html`: the **key sites** at full 30 m detail.

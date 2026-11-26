@@ -122,6 +122,8 @@ def cmd_national(a):
     print("Terrain (cached after the first run) ...")
     terrain = build_terrain()
     write_terrain(terrain, out)
+    from .national import build_terrain90
+    build_terrain90(out)
     print("Processing tiles ...")
     man = run_national(scene, a.satellite, out, th, terrain)
     web = Path(__file__).parent / "web_national"

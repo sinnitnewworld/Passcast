@@ -18,6 +18,7 @@ from __future__ import annotations
 import concurrent.futures as cf
 import datetime as dt
 import gzip
+import shutil
 import json
 import math
 import os
@@ -131,6 +132,74 @@ def write_terrain(terrain: dict, outdir):
         zx = TERRAIN_MAX.get(k, z)
         blob = np.clip(z, 0, 9000).astype("<u2").tobytes() + np.clip(zx, 0, 9000).astype("<u2").tobytes()
         (d / f"{k}.bin.gz").write_bytes(gzip.compress(blob, 6))
+
+
+# ---------------------------------------------------------------------------
+# 90 m terrain for low-level (valley) planning: mountain belt only
+# terrain90/NddEddd.bin.gz = int16, 1200x1200, south-up, each row stored as
+# first value then differences (so gzip compresses it well); index.json lists keys.
+# ---------------------------------------------------------------------------
+MOUNTAIN_MIN_M = 2000
+N90 = 1200
+
+
+def mountain_degrees(lat_min=26, min_m=MOUNTAIN_MIN_M):
+    """1x1 degree cells (south-west corners) with terrain >= min_m, from the 1 km maxima."""
+    cells = int(round(1 / RES)); out = []
+    for (la0, lo0) in TILES:
+        zx = TERRAIN_MAX.get(key(la0, lo0))
+        if zx is None:
+            continue
+        for i in range(int(TILE)):
+            for j in range(int(TILE)):
+                la, lo = la0 + i, lo0 + j
+                if la >= lat_min and zx[i * cells:(i + 1) * cells, j * cells:(j + 1) * cells].max() >= min_m:
+                    out.append((la, lo))
+    return out
+
+
+def encode90(z):
+    z = np.clip(np.asarray(z), -500, 9000).astype("<i2")
+    d = np.diff(z.astype("int32"), axis=1, prepend=0).astype("<i2")
+    return gzip.compress(d.tobytes(), 6)
+
+
+def decode90(blob, n=N90):
+    d = np.frombuffer(gzip.decompress(blob), "<i2").reshape(n, n).astype("int32")
+    return np.cumsum(d, axis=1).astype("int16")
+
+
+def _read_full90(la, lo):
+    import rasterio
+    url = "/vsicurl/" + GLO90.format(n=_glo90_name(la, lo))
+    try:
+        with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif"):
+            with rasterio.open(url) as src:
+                full = src.read(1).astype("float32")
+        if full.shape != (N90, N90):
+            return None
+        return np.where(full < -500, 0, full)[::-1]              # north-up -> south-up
+    except Exception:
+        return None
+
+
+def build_terrain90(outdir, cache_dir="~/.passcast/terrain90_v1", workers=16, degrees=None):
+    cache = Path(os.path.expanduser(cache_dir)); cache.mkdir(parents=True, exist_ok=True)
+    d = Path(outdir) / "terrain90"; d.mkdir(parents=True, exist_ok=True)
+    degrees = degrees if degrees is not None else mountain_degrees()
+    todo = [(la, lo) for la, lo in degrees if not (cache / f"{key(la, lo)}.bin.gz").exists()]
+    with cf.ThreadPoolExecutor(workers) as ex:
+        for (la, lo), z in zip(todo, ex.map(lambda t: _read_full90(*t), todo)):
+            if z is not None:
+                (cache / f"{key(la, lo)}.bin.gz").write_bytes(encode90(z))
+    keys = []
+    for la, lo in degrees:
+        f = cache / f"{key(la, lo)}.bin.gz"
+        if f.exists():
+            shutil.copy(f, d / f.name); keys.append(key(la, lo))
+    (d / "index.json").write_text(json.dumps({"n": N90, "keys": keys, "source": "Copernicus GLO-90 DSM"}))
+    print(f"  90 m terrain: {len(keys)} mountain degree cells")
+    return keys
 
 
 # ---------------------------------------------------------------------------

@@ -113,3 +113,11 @@ def test_route_rating_weakest_stretch():
     assert score_route(recs, [A, (A[0] + 0.03, A[1] - 0.05)], 2000, man)["score"] == 1.0   # short hop in clear air
     r = score_route(recs, [A, B], 2000, man)                                                 # ends inside the storm
     assert r["score"] == 0.0 and r["blocked"] >= 1
+
+
+def test_terrain90_roundtrip():
+    import numpy as np
+    from passcast.national import encode90, decode90
+    rng = np.random.default_rng(0)
+    z = (3000 + np.cumsum(rng.integers(-30, 31, (1200, 1200)), axis=1)).clip(-400, 8800).astype("int16")
+    assert (decode90(encode90(z)) == z).all()

@@ -112,6 +112,15 @@ details{margin-top:10px;background:var(--panel);border:1px solid var(--line);bor
      <label class="lab chk"><input type="checkbox" id="snt">Night flying authorised</label>
     </div><div class="hint">Defaults are the civil ICAO/DGCA values. Replace them with your unit's flying orders; this tool cannot see those.</div>
    </details>
+   <label class="lab chk"><input type="checkbox" id="low">Low-level: fly the valleys between the peaks</label>
+   <details id="lowd" hidden open><summary>Low-level settings</summary>
+    <div class="grid3">
+     <label class="lab">Height above the ground (ft)<input id="agl" type="number" step="50" min="100" max="3000" value="500"></label>
+     <label class="lab">Distance from valley walls (m)<input id="latm" type="number" step="10" min="50" max="1000" value="150"></label>
+     <label class="lab">Low-level speed (kt)<input id="lkt" type="number" step="5" min="30" max="140" value="70"></label>
+     <label class="lab">Terrain-data margin (ft)<input id="dmg" type="number" step="50" min="0" max="1000" value="300"></label>
+    </div><div class="hint">Uses 90 m terrain (Himalaya and Northeast, ground above 2,000 m). The margin covers terrain-data error on steep slopes. Satellites cannot see under cloud inside a valley, wires are not in any data, and valley winds are not modelled.</div>
+   </details>
    <label class="lab chk" id="iceWrap" hidden><input type="checkbox" id="ice">Aircraft and crew cleared for flight in icing conditions</label>
    <div class="hint" id="ruleHint"></div>
   </div>
@@ -341,8 +350,66 @@ function qualityCheck(S,T){const confs=[],cav=new Set();S.forEach((p,i)=>{if(i%5
  confs.sort((a,b)=>a-b);const c=confs.length?confs[Math.floor(confs.length*.1)]:0,lab=c>=.75?"HIGH":c>=.5?"MEDIUM":"LOW";
  return {id:"quality",status:lab=="LOW"?"CAUTION":"PASS",rule:"Satellite cloud picture quality",detail:`Confidence ${lab}.${cav.size?" "+[...cav].slice(0,4).join("; ")+".":""}`,src:"PassCast satellite data"}}
 
+
+/* ---------- low-level mode ---------- */
+let T90=null;const z90={};
+async function load90(stops,padDeg){if(!T90){try{T90=new Set((await (await fetch("terrain90/index.json",{cache:"no-store"})).json()).keys)}catch(e){T90=new Set()}}
+ const la=stops.map(s=>s.lat),lo=stops.map(s=>s.lon);
+ for(let a=Math.floor(Math.min(...la)-padDeg);a<=Math.floor(Math.max(...la)+padDeg);a++)for(let b=Math.floor(Math.min(...lo)-padDeg);b<=Math.floor(Math.max(...lo)+padDeg);b++){
+  const k=`N${String(a).padStart(2,"0")}E${String(b).padStart(3,"0")}`;if(z90[k]!==undefined||!T90.has(k)){if(!T90.has(k))z90[k]=null;continue}
+  try{const u8=await gunzip(await (await fetch(`terrain90/${k}.bin.gz`)).arrayBuffer());const d=new Int16Array(u8.buffer,u8.byteOffset,u8.byteLength/2),z=new Int16Array(d.length);
+   for(let i=0;i<1200;i++){let acc=0;for(let j=0;j<1200;j++){acc+=d[i*1200+j];z[i*1200+j]=acc}}z90[k]=z}catch(e){z90[k]=null}}}
+function getZ90(lat,lon){const a=Math.floor(lat),b=Math.floor(lon),z=z90[`N${String(a).padStart(2,"0")}E${String(b).padStart(3,"0")}`];if(!z)return null;
+ const i=Math.min(1199,Math.floor((lat-a)*1200)),j=Math.min(1199,Math.floor((lon-b)*1200));return z[i*1200+j]}
+/* 90 m where available (mountain belt); elsewhere the 1 km peak value, which is coarser but never lower than the ground */
+function getZ(lat,lon){const v=getZ90(lat,lon);if(v!=null)return v;const c=getCell(lat,lon);return c&&!c.nodata?c.zx:null}
+function syncLow(){const on=$("#low").checked;$("#lowd").hidden=!on;$("#auto").hidden=on;$("#alt").disabled=on;$("#rate").textContent=on?"Plan low-level route":"Plan this route"}
+$("#low").onchange=()=>{syncLow();rerate()};["agl","latm","lkt","dmg"].forEach(id=>$("#"+id).addEventListener("change",rerate));syncLow();
+async function rateLow(){const {ac,u,dep}=inputs();Object.assign(u,{aglFt:num("agl",500),latM:num("latm",150),lowKt:num("lkt",70),demMarginFt:num("dmg",300)});
+ const main=stops.filter(s=>!s.via);if(main.length<2)return err("Add at least two stops.");stops=main;renderStops();
+ $("#out").innerHTML='<div class="empty"><span class="spin"></span>Loading 90 m terrain and cloud…</div>';
+ await load90(main,.2);const T=await tilesFor(bboxPoints(main,10));const {dist}=PL.sampleRoute(main),wx=await forecast(main,dist,dep);
+ $("#out").innerHTML='<div class="empty"><span class="spin"></span>Searching the valleys…</div>';await new Promise(r=>setTimeout(r,20));
+ const P=PL.planLow({stops:main,getZ,getCell,u,ac,wx,imageTime:Date.parse(M.image_time_utc),depTime:dep});if(P.error)return err(esc(P.error));
+ P.checks.push(qualityCheck(P.pts.filter((p,i)=>i%10==0),T));
+ const coarse=P.pts.filter(p=>getZ90(p.lat,p.lon)==null).length/P.pts.length;
+ P.checks.push({id:"dem",status:coarse>.05?"CAUTION":"PASS",rule:"Terrain detail",detail:coarse>.05?`${Math.round(coarse*100)}% of the route is outside the 90 m mountain terrain and uses 1 km peak values (safe but coarse: narrow valleys there look closed).`:"The whole route uses 90 m terrain.",src:"Copernicus GLO-90"});
+ renderLow(P,PL.verdict(P.checks),wx,dep)}
+function simplify(P2,eps){const kx=111320*Math.cos(P2[0].lat*Math.PI/180),ky=111320;const rec=(a,b)=>{let md=0,mi=-1;const A=P2[a],B=P2[b],dx=(B.lon-A.lon)*kx,dy=(B.lat-A.lat)*ky,L=Math.hypot(dx,dy)||1;
+  for(let i=a+1;i<b;i++){const d=Math.abs(dy*(P2[i].lon-A.lon)*kx-dx*(P2[i].lat-A.lat)*ky)/L;if(d>md){md=d;mi=i}}return md>eps?rec(a,mi).concat(rec(mi,b).slice(1)):[a,b]};return rec(0,P2.length-1)}
+function renderLow(P,v,wx,dep){const pts=P.pts,rules=P.rules,ac=P.ac,u=P.u,ist=ms=>new Date(ms+5.5*3600e3).toISOString().slice(11,16);
+ const order={FAIL:0,CAUTION:1,NOT_CHECKED:2,INFO:3,PASS:4},checks=[...P.checks].sort((a,b)=>order[a.status]-order[b.status]);
+ const wpi=simplify(pts,120),wps=wpi.map(i=>pts[i]),noTurn=pts.filter(p=>!p.turn).length*.09,under=pts.filter(p=>p.under).length*.09;
+ const widths=pts.filter(p=>p.width!=null&&p.km>1&&p.km<P.dist-1).map(p=>p.width),minW=widths.length?Math.min(...widths):null;
+ const first=stops[0].name,last=stops[stops.length-1].name;
+ $("#out").innerHTML=`<p class="place">${esc(first)} → ${esc(last)} · low level</p>
+ <div class="meta">${esc(rules.label)} · ${esc(ac.name)} · ${fk(u.aglFt)} ft above ground, ${fk(u.latM)} m from walls, ${fk(u.lowKt)} kt · ${dep?"departs "+ist(dep)+" IST":"no departure time"}</div>
+ <div class="stamp" style="background:${COL[v]}"><div class="n">${v}</div><div><div class="l">${VLAB[v]}</div><div class="c">${v==0?"at least one rule is not met":v==.5?"no rule broken, but some items need your judgement or could not be checked":"every rule checked here is met"} · see the checklist</div></div></div>
+ <div class="tiles"><div><b>${P.dist.toFixed(1)} km</b><span>valley route</span></div><div><b>${Math.round(P.flightMin)} min</b><span>at ${fk(u.lowKt)} kt (no wind)</span></div><div><b>${fk(Math.max(...pts.map(p=>p.alt)))} ft</b><span>highest altitude</span></div>
+  <div><b>${minW==null?"–":minW>=5400?"> 5 km":fk(minW)+" m"}</b><span>narrowest valley at your height</span></div><div><b>${noTurn.toFixed(1)} km</b><span>no room to turn back</span></div><div><b>${under.toFixed(1)} km</b><span>under/near cloud</span></div></div>
+ <h2>Vertical profile</h2><div class="fig"><svg id="prof" role="img" aria-label="Low-level vertical profile"></svg></div>
+ <div class="legend"><span><i class="sw" style="background:#a8551b"></i>ground under the track (90 m)</span><span><i class="sw" style="background:none;border:1px dashed #a8551b"></i>highest ground within ${fk(u.latM)} m</span><span><i class="sw" style="background:#d6127e"></i>planned altitude</span><span><i class="sw" style="background:#d99300"></i>no turn-back room / under cloud</span></div>
+ <h2>Rules checklist</h2><div class="checks">${checks.map(c=>`<div class="ck"><span class="b ${c.status}">${SLAB[c.status]}</span><span class="r">${esc(c.rule)}</span><span class="d">${esc(c.detail)}</span><span class="s">${esc(c.src)}</span></div>`).join("")}</div>
+ <h2>Waypoints (${wps.length})</h2><ul class="steps">${P.events.filter(e=>e.type=="orbit-up").map(e=>`<li><b>Orbit</b><span>Climb over the departure to ${fk(e.to)} ft</span></li>`).join("")}${wps.map((p,k)=>`<li><b>${k==0?"Start":k==wps.length-1?"End":"WP "+k}</b><span>${p.lat.toFixed(4)}, ${p.lon.toFixed(4)} · km ${p.km.toFixed(1)} · ${fk(p.alt)} ft (${fk(p.agl)} ft above ground)${p.turn?"":" · no turn-back room"}</span></li>`).join("")}${P.events.filter(e=>e.type=="orbit-down").map(e=>`<li><b>Orbit</b><span>Descend over the destination from ${fk(e.from)} ft</span></li>`).join("")}</ul>
+ <div class="row"><button id="gpxOut">Download route (GPX)</button></div>
+ <h2>You still have to check</h2><ul>${PL.notChecked(rules).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+ <div class="note">Planning aid, not an approved flight-planning system. Terrain: Copernicus GLO-90 surface model, ${fk(u.demMarginFt)} ft margin added. Cloud: satellite at about 4 km per pixel, so a narrow valley under cloud cannot be confirmed clear. Wires, ropeways and valley winds are not in any data. The pilot-in-command decides.</div>`;
+ $("#gpxOut").onclick=()=>{const g=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="PassCast" xmlns="http://www.topografix.com/GPX/1/1"><rte><name>${esc(first)} to ${esc(last)} (low level)</name>${wps.map((p,k)=>`<rtept lat="${p.lat.toFixed(5)}" lon="${p.lon.toFixed(5)}"><ele>${Math.round(p.H)}</ele><name>${k==0?"START":k==wps.length-1?"END":"WP"+k}</name></rtept>`).join("")}</rte></gpx>`;
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([g],{type:"application/gpx+xml"}));a.download="passcast-low-level.gpx";a.click()};
+ if(map){if(routeLayer)routeLayer.remove();routeLayer=L.layerGroup().addTo(map);for(let i=0;i<pts.length-1;i++){const p=pts[i+1];L.polyline([[pts[i].lat,pts[i].lon],[p.lat,p.lon]],{color:p.under||!p.turn?HEX[.5]:HEX[1],weight:5,opacity:.95}).addTo(routeLayer)}
+  map.fitBounds(L.latLngBounds(pts.map(p=>[p.lat,p.lon])).pad(.2))}
+ const svg=$("#prof"),dist=P.dist,draw=()=>{const W=svg.clientWidth,H=svg.clientHeight,pl=W<520?40:56,pr=10,pt=10,pb=24;
+  const lo=Math.min(...pts.map(p=>p.z))*.97,ymax=Math.max(...pts.map(p=>Math.max(p.H,p.wall)))*1.03+100,X=k=>pl+(W-pl-pr)*k/Math.max(dist,.1),Y=z=>H-pb-(H-pt-pb)*(Math.max(lo,Math.min(z,ymax))-lo)/(ymax-lo);let h="";
+  h+=`<path d="M${X(0)},${Y(lo)} ${pts.map(p=>`L${X(p.km)},${Y(p.z)}`).join(" ")} L${X(dist)},${Y(lo)} Z" fill="rgba(168,85,27,.3)" stroke="#a8551b" stroke-width="1.4"/>`;
+  h+=`<path d="${pts.map((p,i)=>`${i?"L":"M"}${X(p.km)},${Y(p.wall)}`).join(" ")}" fill="none" stroke="#a8551b" stroke-dasharray="4 3"/>`;
+  h+=`<path d="${pts.map((p,i)=>`${i?"L":"M"}${X(p.km)},${Y(p.H)}`).join(" ")}" fill="none" stroke="#d6127e" stroke-width="2.6"/>`;
+  for(let i=0;i<pts.length-1;i++){const p=pts[i+1];h+=`<rect x="${X(pts[i].km)}" y="${H-pb-5}" width="${Math.max(1,X(p.km)-X(pts[i].km))}" height="5" fill="${p.under||!p.turn?HEX[.5]:HEX[1]}"/>`}
+  const sf=(ymax-lo)/FT>8000?2000:(ymax-lo)/FT>3000?1000:500;for(let f=Math.ceil(lo/FT/sf)*sf;ft2m(f)<ymax;f+=sf){const y=Y(ft2m(f));h+=`<line x1="${pl}" x2="${W-pr}" y1="${y}" y2="${y}" stroke="currentColor" opacity=".08"/><text x="${pl-5}" y="${y+4}" text-anchor="end" font-size="11" fill="currentColor" opacity=".7">${W<520?(f/1000).toFixed(1)+"k":f.toLocaleString()}</text>`}
+  h+=`<text x="${W-pr}" y="${H-7}" text-anchor="end" font-size="11" fill="currentColor" opacity=".7">${dist.toFixed(1)} km</text><text x="${pl}" y="${H-7}" font-size="11" fill="currentColor" opacity=".7">ft · 0 km</text>`;svg.innerHTML=h};
+ new ResizeObserver(draw).observe(svg);draw()}
 let lastPlan=null;
 async function rateRoute(){if(stops.length<2)return err("Add at least two stops.");if(!M)return err("Satellite data hasn't loaded yet.");
+ if($("#low").checked)return rateLow();
  const {ac,u,dep}=inputs(),rules=PL.rulesFor(u);
  $("#out").innerHTML='<div class="empty"><span class="spin"></span>Loading terrain, cloud and forecast…</div>';
  const pad=Math.max(rules.radiusM,rules.cloudHorizM)/1000+3,T=await tilesFor(bboxPoints(stops,pad));

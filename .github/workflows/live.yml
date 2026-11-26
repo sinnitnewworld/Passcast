@@ -37,6 +37,11 @@ jobs:
         with:
           path: ~/.passcast/terrain1km_v2
           key: terrain1km-v2
+      - name: Cache 90 m mountain terrain
+        uses: actions/cache@v4
+        with:
+          path: ~/.passcast/terrain90_v1
+          key: terrain90-v1
       - name: Install
         run: pip install -r requirements.txt
       - name: Pick the latest image slot
@@ -47,6 +52,14 @@ jobs:
             --only "Nathu La,Sela Pass,Kedarnath Helipad,Rohtang Pass,Kunzum Pass,Zoji La,Khardung La,Shillong Plateau"
       - name: All-India 1 km tiles + search page
         run: python -m passcast national --satellite himawari --time "$SLOT" --out site
+      - name: Probe browser access to 30 m terrain (CORS)
+        continue-on-error: true
+        run: |
+          echo "### 30 m DEM CORS probe" >> "$GITHUB_STEP_SUMMARY"
+          curl -s -o /dev/null -D - -H "Origin: https://sinnitnewworld.github.io" -H "Range: bytes=0-15" \
+            "https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N34_00_E077_00_DEM/Copernicus_DSM_COG_10_N34_00_E077_00_DEM.tif" \
+            | grep -i -E "^HTTP|access-control" | tee -a "$GITHUB_STEP_SUMMARY"
+          du -sh site/terrain90 | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Summary
         if: always()
         run: |

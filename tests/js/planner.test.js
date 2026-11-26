@@ -115,3 +115,46 @@ t("cold-temperature correction raises the indicated altitude needed", () => {
   assert(top(cold) >= top(warm), `cold ${top(cold)} vs warm ${top(warm)}`);
 });
 console.log(`${n} tests passed`);
+
+/* ---------- low-level mode ---------- */
+// N-S valley along lon 77.0 (floor 2,500 m, walls rise to 4,500 m within 3 km),
+// blocked at lat 34.0 by a 4,200 m ridge with a narrow 3,000 m notch at lon 77.005
+function valleyZ(lat, lon) {
+  const x = (lon - 77.0) * 92, y = lat;                       // km east of the valley axis
+  let z = 2500 + Math.min(2000, 2000 * (x / 3) ** 2);
+  const ridge = Math.exp(-(((y - 34.0) / 0.012) ** 2)), notch = Math.exp(-((((lon - 77.005) * 92) / 0.35) ** 2));
+  z = Math.max(z, 2500 + ridge * (1700 - 1200 * notch));
+  return z;
+}
+const clearCell = () => ({ zx: 0, z: 0, nodata: false, cloud: false, top: 0, base: 0 });
+const ULow = o => U(Object.assign({ mode: "vfr", aglFt: 500, demMarginFt: 300, latM: 150, lowKt: 70, oxygen: true }, o));
+const vstops = [{ lat: 33.85, lon: 77.0, name: "A" }, { lat: 34.15, lon: 77.0, name: "B" }];
+
+t("low-level: keeps height above ground + margin and wall clearance, goes through the notch", () => {
+  const r = P.planLow({ stops: vstops, getZ: valleyZ, getCell: clearCell, u: ULow(), ac, wx: null });
+  assert(!r.error, r.error);
+  for (const p of r.pts.slice(1, -1)) assert(p.H >= p.wall + P.ft2m(800) - 1, `km ${p.km}: H ${p.H} wall ${p.wall}`);
+  const atRidge = r.pts.filter(p => Math.abs(p.lat - 34.0) < 0.003);
+  assert(atRidge.every(p => Math.abs(p.lon - 77.005) < 0.004), "crosses the ridge in the notch: " + atRidge.map(p => p.lon.toFixed(3)));
+  assert(Math.max(...r.pts.map(p => p.alt)) < 14000, "stays low: " + Math.max(...r.pts.map(p => p.alt)));
+});
+t("low-level: climbs start before the ridge (rate-limited)", () => {
+  const r = P.planLow({ stops: vstops, getZ: valleyZ, getCell: clearCell, u: ULow(), ac, wx: null });
+  for (let i = 1; i < r.pts.length; i++) { const dm = r.pts[i].H - r.pts[i - 1].H, s = (r.pts[i].km - r.pts[i - 1].km) * 1000 / (70 * .51444);
+    if (dm > 0) assert(P.m2ft(dm) / (s / 60) <= 1000 * 1.02 + 1, `climb ${P.m2ft(dm) / (s / 60)} ft/min`); }
+});
+t("low-level: narrow notch has no room to turn back -> CAUTION with commit point", () => {
+  const r = P.planLow({ stops: vstops, getZ: valleyZ, getCell: clearCell, u: ULow(), ac, wx: null });
+  const c = r.checks.find(x => x.id === "turn"); assert.strictEqual(c.status, "CAUTION", c.detail);
+  assert(r.checks.find(x => x.id === "wires").status === "CAUTION");
+});
+t("low-level: cloud down to the valley floor blocks the route", () => {
+  const cloudy = (la, lo) => Math.abs(la - 34.0) < 0.05 ? { zx: 0, z: 0, cloud: true, top: 6000, base: 0 } : clearCell();
+  const r = P.planLow({ stops: vstops, getZ: valleyZ, getCell: cloudy, u: ULow(), ac, wx: null });
+  assert(r.error && /cloud/.test(r.error), r.error);
+});
+t("low-level: refused outside 90 m coverage and for IFR", () => {
+  assert(/No 90 m terrain/.test(P.planLow({ stops: vstops, getZ: () => null, getCell: clearCell, u: ULow(), ac, wx: null }).error));
+  assert(/visual/.test(P.planLow({ stops: vstops, getZ: valleyZ, getCell: clearCell, u: ULow({ mode: "ifr" }), ac, wx: null }).error));
+});
+console.log("low-level tests done");
