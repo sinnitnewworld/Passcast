@@ -16,4 +16,4 @@ passcast = "passcast.cli:main"
 packages = ["passcast"]
 
 [tool.setuptools.package-data]
-passcast = ["vendor/*"]
+passcast = ["vendor/*", "web_national/*"]

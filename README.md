@@ -51,6 +51,16 @@ Ordinary cloud masks fail in the Himalaya. PassCast handles six mountain-specifi
 
 **This is not operational validation.** The next step is to run against real INSAT-3DR / Himawari imagery and compare with pilot reports, METARs and webcam images for named passes.
 
+## Live: search anywhere in India
+
+Every run publishes two pages:
+* `index.html`: the **search page**. Search any place, type coordinates, use your location or tap the map, and get a satellite score (1 / 0.5 / 0) with confidence and reasons.
+  * Each run builds a 1 km cloud-and-terrain grid of all India (29 tiles of 5° × 5°). The page loads only the tile it needs and scores it in the browser, using the same rules as the Python code (`national.score_cells`).
+  * Settings such as snow detection and fog mode are chosen per 5° tile, not per point. This is an approximation.
+* `sites.html`: the **key sites** at full 30 m detail.
+
+Command: `passcast national --satellite himawari --out site`. Terrain comes from Copernicus GLO-90; it is built once and then cached.
+
 ## Regional profiles (automatic)
 
 | Profile | Where | What changes |
@@ -116,7 +126,7 @@ Place search uses OpenStreetMap's Nominatim, with Open-Meteo geocoding as a fall
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 pip install -e .
-pytest -q                                               # 18 tests
+pytest -q                                               # 19 tests
 passcast demo                                           # writes out_demo/passcast_dashboard.html
 ```
 

@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,17 +32,31 @@ jobs:
           path: ~/.passcast/dem
           key: dem-v1-${{ hashFiles('passcast/config.py') }}
           restore-keys: dem-v1-
+      - name: Cache 1 km terrain for India
+        uses: actions/cache@v4
+        with:
+          path: ~/.passcast/terrain1km
+          key: terrain1km-v1
       - name: Install
         run: pip install -r requirements.txt
-      - name: Score sites from the latest Himawari image
+      - name: Pick the latest image slot
+        run: echo "SLOT=$(python -c 'from passcast.satellite import latest_himawari_slot as s; print(s().strftime("%Y-%m-%dT%H:%M"))')" >> $GITHUB_ENV
+      - name: Key sites at 30 m
         run: |
-          python -m passcast run --satellite himawari --index --out site \
+          python -m passcast run --satellite himawari --time "$SLOT" --index --out site \
             --only "Nathu La,Sela Pass,Kedarnath Helipad,Rohtang Pass,Kunzum Pass,Zoji La,Khardung La,Shillong Plateau"
+      - name: All-India 1 km tiles + search page
+        run: python -m passcast national --satellite himawari --time "$SLOT" --out site
       - name: Summary
         if: always()
         run: |
           python - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
           import json, pathlib
+          m = pathlib.Path("site/manifest.json")
+          if m.exists():
+              man = json.loads(m.read_text())
+              print(f"National: {len(man['tiles'])} tiles in {man['processing_s']} s")
+              print("  " + ", ".join(f"{k} {v['profile']} valid {v['valid']:.0%} cloudy {v.get('cloudy',0):.0%}" for k, v in man['tiles'].items()) + "\n")
           f = pathlib.Path("site/latest.json")
           if not f.exists():
               print("no latest.json"); raise SystemExit

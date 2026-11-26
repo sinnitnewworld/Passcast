@@ -182,10 +182,10 @@ HIMA_BUCKET = "https://noaa-himawari9.s3.amazonaws.com"
 
 
 def fetch_himawari(when: dt.datetime, bands=("B03", "B05", "B07", "B13", "B15"),
-                   segments=(2, 3, 4), cache_dir="~/.passcast/himawari") -> list[Path]:
+                   segments=(2, 3, 4, 5), cache_dir="~/.passcast/himawari") -> list[Path]:
     """Download Himawari full-disk HSD segments for one time slot.
 
-    Segments 2-4 of 10 cover roughly 10-50 N. Note: India sits at the far
+    Segments 2-5 of 10 cover roughly 0-50 N (all of India). Note: India sits at the far
     western edge of Himawari's disk (view angle >60 deg over the western
     Himalaya), so prefer INSAT or Meteosat IODC there; Himawari is most useful
     for the eastern Himalaya (Sikkim, Arunachal).

@@ -77,3 +77,20 @@ def test_regions():
     assert detect_region(25.57, 91.88, 1500) == "northeast"
     th = thresholds_for(Pass("x", 26.76, 80.89, 123), Thresholds())
     assert th.snow_test is False and th.fog_btd_low < Thresholds().fog_btd_low
+
+
+def test_national_tile_matches_site_scores():
+    import numpy as np, tempfile
+    from scipy.interpolate import RegularGridInterpolator
+    from passcast.demo import make_demo
+    from passcast.national import run_national, N, tile_axes, key, unpack, score_cells
+    dem, passes, truth, scene, when = make_demo()
+    lat, lon = tile_axes(30, 75)
+    f = RegularGridInterpolator((dem.lat, dem.lon), dem.z, bounds_error=False, fill_value=0)
+    LA, LO = np.meshgrid(lat, lon, indexing="ij")
+    z = f(np.column_stack([LA.ravel(), LO.ravel()])).reshape(N, N).astype("float32")
+    with tempfile.TemporaryDirectory() as d:
+        man = run_national(scene, "insat3dr", d, Thresholds(), terrain={key(30, 75): z}, tiles=[(30, 75)])
+        rec = unpack(open(f"{d}/run/N30E075.bin.gz", "rb").read())
+    got = [score_cells(rec, p.lat, p.lon, 30, 75, 3000, man)["score"] for p in passes]
+    assert got == [1.0, 0.0, 0.5]

@@ -97,9 +97,36 @@ def cmd_run(a):
     write_dashboard(products, scene, out / f"passcast_{stamp}.html", subtitle=sub)
     if a.index:      # stable names for a hosted, auto-updating page
         import shutil
-        shutil.copy(out / f"passcast_{stamp}.html", out / "index.html")
+        shutil.copy(out / f"passcast_{stamp}.html", out / "sites.html")
         shutil.copy(out / f"passcast_{stamp}.json", out / "latest.json")
     print(f"Outputs in {out}/")
+
+
+def cmd_national(a):
+    """All-India 1 km tiles + the search-anywhere page."""
+    import shutil
+    from .satellite import read_with_satpy, fetch_himawari, latest_himawari_slot, files_in
+    from .national import build_terrain, write_terrain, run_national
+    th = load_thresholds(a.config)
+    if a.files:
+        files = files_in(a.files)
+    elif a.satellite == "himawari":
+        when = dt.datetime.strptime(a.time, "%Y-%m-%dT%H:%M") if a.time else latest_himawari_slot()
+        print(f"Fetching Himawari-9 {when:%Y-%m-%d %H:%M} UTC ...")
+        files = fetch_himawari(when)
+    else:
+        raise SystemExit("pass --files for this satellite")
+    print("Reading satellite data for India ...")
+    scene = read_with_satpy(a.satellite, files, (65.0, 5.0, 100.0, 40.0))
+    out = _outdir(a.out)
+    print("Terrain (cached after the first run) ...")
+    terrain = build_terrain()
+    write_terrain(terrain, out)
+    print("Processing tiles ...")
+    man = run_national(scene, a.satellite, out, th, terrain)
+    page = Path(__file__).parent / "web_national" / "index.html"
+    shutil.copy(page, out / "index.html")
+    print(f"{len(man['tiles'])} tiles in {man['processing_s']} s -> {out}/")
 
 
 def cmd_region(a):
@@ -199,7 +226,7 @@ def main(argv=None):
     r.add_argument("--dem", help="folder of local DEM GeoTIFFs (default: Copernicus GLO-30 download)")
     r.add_argument("--cloud-base", help="JSON {pass name: cloud base m AMSL} from met observations")
     r.add_argument("--config", help="JSON threshold overrides"); r.add_argument("--out", default="out")
-    r.add_argument("--index", action="store_true", help="also write index.html + latest.json (for hosting)")
+    r.add_argument("--index", action="store_true", help="also write sites.html + latest.json (for hosting)")
     g = sub.add_parser("region")
     g.add_argument("--satellite", required=True, choices=list(SATELLITES)); g.add_argument("--files", required=True)
     g.add_argument("--polygon", required=True, help='"lon,lat;lon,lat;..."'); g.add_argument("--config")
@@ -216,8 +243,12 @@ def main(argv=None):
     dr.add_argument("--live-satellite", choices=list(SATELLITES), help="also check current cloud from satellite")
     dr.add_argument("--files"); dr.add_argument("--passes"); dr.add_argument("--config")
     dr.add_argument("--out", default="out/drone_check.html")
+    na = sub.add_parser("national", help="all-India 1 km tiles + search-anywhere web page")
+    na.add_argument("--satellite", default="himawari", choices=list(SATELLITES))
+    na.add_argument("--files"); na.add_argument("--time"); na.add_argument("--config")
+    na.add_argument("--out", default="site")
     a = ap.parse_args(argv)
-    {"demo": cmd_demo, "run": cmd_run, "region": cmd_region, "drone": cmd_drone}[a.cmd](a)
+    {"demo": cmd_demo, "run": cmd_run, "region": cmd_region, "drone": cmd_drone, "national": cmd_national}[a.cmd](a)
 
 
 if __name__ == "__main__":

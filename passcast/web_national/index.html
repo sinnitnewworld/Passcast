@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#13242e">
+<title>PassCast · flyability anywhere in India</title>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/*
+VOICE: an operations console a met officer trusts: terse, exact, honest about uncertainty.
+IDEA: a survey map with the satellite's cloud laid over it and a score stamp for any point.
+PICTURE: the map with the cloud overlay and corridor ring; the 1 / 0.5 / 0 stamp beside it.
+COLOUR and TYPE: survey-map land/sea/ink, magenta accent; green/amber/red only for scores. Overpass.
+LAYOUT: search + map left, result right on wide screens; one column on phones.
+*/
+:root{color-scheme:light dark;--bg:light-dark(#fbfbf2,#0d1c24);--panel:light-dark(#fff,#132a35);--line:light-dark(#dfe3d6,#22404d);
+--ink:light-dark(#13242e,#e8f1f4);--mute:light-dark(#5b6b73,#93a9b2);--sea:light-dark(#bfe3ee,#173847);--accent:#d6127e;--s1:#1f9d55;--s05:#d99300;--s0:#d64545}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Overpass,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow-x:clip}
+header{background:var(--sea);padding:12px max(4vw,16px);display:flex;flex-wrap:wrap;gap:8px 18px;align-items:baseline;justify-content:space-between}
+h1{margin:0;font-size:22px;font-weight:800}h1 span{font-weight:400;font-size:14px;color:var(--mute);margin-left:6px}
+.img{font-size:13px;color:var(--mute)}.img a{color:var(--accent);font-weight:600}
+.wrap{max-width:1300px;margin:0 auto;padding:14px max(4vw,16px) 40px;display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
+@media(min-width:1000px){.wrap{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:start}}
+.search{position:relative;display:flex;gap:8px}
+input,select,button{font:inherit;font-size:16px;color:var(--ink)}
+input,select{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px;width:100%}
+button{min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--panel);padding:8px 14px;cursor:pointer;font-weight:600}
+button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+#results{position:absolute;top:50px;left:0;right:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,.2);display:none;max-height:320px;overflow:auto}
+#results div{padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer}#results div:hover{background:var(--sea)}#results small{display:block;color:var(--mute);font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}.row>*{flex:1 1 150px}
+#map{height:min(62vh,560px);min-height:320px;border-radius:12px;margin-top:10px;border:1px solid var(--line);background:var(--sea)}
+.lab{font-size:13px;color:var(--mute)}
+.place{font-size:24px;font-weight:800;line-height:1.15;margin:0}.meta{font-size:14px;color:var(--mute)}
+.stamp{display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:center;border-radius:14px;padding:14px 16px;color:#fff;margin-top:12px}
+.stamp .n{font-size:44px;font-weight:800;line-height:1;width:96px;height:96px;border:3px solid rgba(255,255,255,.85);border-radius:12px;display:flex;align-items:center;justify-content:center}
+.stamp .l{font-size:20px;font-weight:800}.stamp .c{font-size:14px;opacity:.95}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}@media(max-width:560px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tiles div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}.tiles b{display:block;font-size:18px;white-space:nowrap}.tiles span{font-size:13px;color:var(--mute)}
+h2{font-size:15px;margin:18px 0 6px}ul{margin:0 0 0 18px;padding:0}li{margin:3px 0}
+.empty{background:var(--panel);border:1px dashed var(--line);border-radius:14px;padding:26px;text-align:center;color:var(--mute)}
+.err{background:var(--panel);border:1px solid var(--s0);border-radius:12px;padding:14px;margin-top:10px}
+.note{font-size:13px;color:var(--mute);border-top:1px solid var(--line);margin-top:18px;padding-top:10px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--mute);margin-top:6px}.sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px;border:1px solid var(--line)}
+.spin{display:inline-block;width:18px;height:18px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:s 1s linear infinite;vertical-align:-4px;margin-right:8px}
+@keyframes s{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.spin{animation:none}}
+.leaflet-container{font:inherit}
+</style>
+</head>
+<body>
+<header><h1>PassCast<span>satellite flyability, anywhere in India</span></h1><div class="img" id="img">Loading latest image…</div></header>
+<div class="wrap">
+ <section>
+  <div class="search">
+   <input id="q" type="search" placeholder="Search a place, pass or helipad, or type lat, long" autocomplete="off" aria-label="Search location">
+   <button id="go" class="pri">Search</button><div id="results"></div>
+  </div>
+  <div class="row">
+   <button id="me">Use my location</button>
+   <label class="lab">Corridor radius<select id="rad"><option value="1000">1 km</option><option value="3000" selected>3 km</option><option value="5000">5 km</option><option value="10000">10 km</option></select></label>
+   <label class="lab"><input type="checkbox" id="ov" checked style="width:auto;min-height:0;margin-right:6px">Show cloud layer</label>
+  </div>
+  <div id="map" aria-label="Map: tap any point to score it"></div>
+  <div class="legend"><span><i class="sw" style="background:#fff"></i>terrain inside cloud</span><span><i class="sw" style="background:rgba(255,255,255,.4)"></i>cloud overhead</span><span><i class="sw" style="background:#7a7a7a"></i>no satellite data</span></div>
+ </section>
+ <section id="out"><div class="empty">Search any place in India, tap the map, or use your location.<br>You'll get a satellite-based score: <b>1</b> clear · <b>0.5</b> partially clear · <b>0</b> not clear, with confidence and reasons.</div></section>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+{
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const F={NIGHT:1,CIRRUS:2,SNOWAMB:4,BASE:8,UNC:16,NODATA:32,MARG:64};
+const COL={1:"var(--s1)",0.5:"var(--s05)",0:"var(--s0)"},LABEL={1:"CLEAR",0.5:"PARTIALLY CLEAR",0:"NOT CLEAR"};
+const PROF={himalaya:"Himalaya profile: snow/cloud separation on",northeast:"Northeast profile: low stratus and convection",western_ghats:"Western Ghats profile: monsoon cloud on the crest",
+ plains:"Plains profile: winter fog mode",islands:"Islands profile: maritime convection",peninsula:"Peninsula profile"};
+let M=null,map=null,marker=null,ring=null,overlay=null,spot=null;const cache={};
+
+/* ---------- manifest ---------- */
+fetch("manifest.json",{cache:"no-store"}).then(r=>r.json()).then(m=>{M=m;const t=new Date(m.image_time_utc);
+ $("#img").innerHTML=`${esc(m.satellite)} · image ${t.toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Kolkata"})} IST · <a href="sites.html">Key sites (30 m detail)</a>`;
+}).catch(()=>{$("#img").innerHTML='No national data yet. <a href="sites.html">Key sites</a>'});
+
+/* ---------- map ---------- */
+if(window.L){map=L.map("map").setView([23,80],5);L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:15,attribution:"&copy; OpenStreetMap"}).addTo(map);
+ map.on("click",e=>pick(e.latlng.lat,e.latlng.lng,null,true))}
+
+/* ---------- search ---------- */
+const LL=/^\s*(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
+async function search(){const q=$("#q").value.trim();if(!q)return;const m=q.match(LL);if(m){hide();return pick(+m[1],+m[2],null,true)}
+ show('<div><span class="spin"></span>Searching…</div>');let items=[],fail=0;
+ try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=in&q=${encodeURIComponent(q)}`);items=(await r.json()).map(x=>({n:x.name||x.display_name.split(",")[0],d:x.display_name,lat:+x.lat,lon:+x.lon}))}catch(e){fail++}
+ if(!items.length){try{const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=6&countryCode=IN&name=${encodeURIComponent(q)}`);items=((await r.json()).results||[]).map(x=>({n:x.name,d:[x.admin2,x.admin1].filter(Boolean).join(", "),lat:x.latitude,lon:x.longitude}))}catch(e){fail++}}
+ if(!items.length)return show(fail>=2?"<div><b>Can't reach the search service.</b> Check your connection.</div>":"<div>No match. Try a nearby town, or type coordinates like <b>34.28, 75.47</b>.</div>");
+ show(items.map((x,i)=>`<div data-i="${i}"><b>${esc(x.n)}</b><small>${esc(x.d)}</small></div>`).join(""));
+ document.querySelectorAll("#results [data-i]").forEach(el=>el.onclick=()=>{const x=items[+el.dataset.i];hide();pick(x.lat,x.lon,x.n,false)})}
+function show(h){$("#results").innerHTML=h;$("#results").style.display="block"}function hide(){$("#results").style.display="none"}
+$("#go").onclick=search;$("#q").addEventListener("keydown",e=>{if(e.key=="Enter")search();if(e.key=="Escape")hide()});
+document.addEventListener("click",e=>{if(!e.target.closest(".search"))hide()});
+$("#me").onclick=()=>{if(!navigator.geolocation)return err("This browser can't share location.");$("#me").textContent="Locating…";
+ navigator.geolocation.getCurrentPosition(p=>{$("#me").textContent="Use my location";pick(p.coords.latitude,p.coords.longitude,null,true)},
+ ()=>{$("#me").textContent="Use my location";err("Location permission was refused or unavailable. Search or tap the map instead.")},{enableHighAccuracy:true,timeout:12000})};
+$("#rad").onchange=()=>{if(spot)pick(spot.lat,spot.lon,spot.name,false)};
+$("#ov").onchange=()=>{if(overlay){if($("#ov").checked)overlay.addTo(map);else overlay.remove()}};
+async function reverse(lat,lon){try{const j=await (await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&lat=${lat}&lon=${lon}`)).json();const a=j.address||{};
+ return a.village||a.hamlet||a.suburb||a.town||a.city||a.county||a.state_district||j.name||null}catch(e){return null}}
+
+/* ---------- tiles ---------- */
+async function gunzip(buf){if(window.DecompressionStream){const s=new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));return new Uint8Array(await new Response(s).arrayBuffer())}
+ throw new Error("This browser can't unpack data; please update Safari/Chrome.")}
+async function loadTile(k){if(cache[k])return cache[k];const n=M.grid.n,nn=n*n;
+ const [run,ter]=await Promise.all([fetch(`run/${k}.bin.gz`,{cache:"no-store"}),fetch(`terrain/${k}.bin.gz`)]);
+ if(!run.ok)throw new Error("no data for this area in the latest run");
+ const b=await gunzip(await run.arrayBuffer()),t=await gunzip(await ter.arrayBuffer());
+ const T={obs:b.subarray(0,nn),pcol:b.subarray(nn,2*nn),cls:b.subarray(2*nn,3*nn),flags:b.subarray(3*nn,4*nn),
+  cth:new Uint16Array(b.buffer.slice(b.byteOffset+4*nn,b.byteOffset+6*nn)),z:new Uint16Array(t.buffer.slice(t.byteOffset,t.byteOffset+2*nn))};
+ return cache[k]=T}
+function tileKey(lat,lon){const a=Math.floor(lat/5)*5,b=Math.floor(lon/5)*5;return {k:`N${String(a).padStart(2,"0")}E${String(b).padStart(3,"0")}`,lat0:a,lon0:b}}
+
+/* ---------- geometry ---------- */
+function vza(lat,lon,sub){if(sub==null)return null;const R=6378.137,H=35786,p=lat*Math.PI/180,d=(lon-sub)*Math.PI/180,c=Math.cos(p)*Math.cos(d),g=Math.acos(Math.max(-1,Math.min(1,c)));
+ return Math.atan2(Math.sin(g),c-R/(R+H))*180/Math.PI}
+
+/* ---------- scoring: mirrors passcast/national.py score_cells ---------- */
+function score(T,info,lat,lon,radius){const n=M.grid.n,res=M.grid.res;const i0=(lat-info.lat0)/res-.5,j0=(lon-info.lon0)/res-.5;
+ const rr=radius/111000/res,rj=rr/Math.cos(lat*Math.PI/180);const cells=[];
+ for(let i=Math.max(0,Math.floor(i0-rr));i<=Math.min(n-1,Math.ceil(i0+rr));i++)for(let j=Math.max(0,Math.floor(j0-rj));j<=Math.min(n-1,Math.ceil(j0+rj));j++){
+  if(((i-i0)/rr)**2+((j-j0)/rj)**2<=1)cells.push(i*n+j)}
+ if(!cells.length)cells.push(Math.round(i0)*n+Math.round(j0));
+ const v=cells.filter(c=>!(T.flags[c]&F.NODATA));const zc=T.z[Math.min(n*n-1,Math.max(0,Math.round(i0)*n+Math.round(j0)))];
+ if(v.length<cells.length*.5)return {none:true,z:zc};
+ const mean=f=>v.reduce((a,c)=>a+f(c),0)/v.length,fl=b=>mean(c=>T.flags[c]&b?1:0);
+ const frac=mean(c=>T.obs[c]/255),th=M.thresholds;let s=frac<=th.clear_max?1:frac<=th.partial_max?.5:0;
+ const cls=[0,1,2,3].map(k=>mean(c=>T.cls[c]==k?1:0));const tops=v.map(c=>T.cth[c]*10).filter(x=>x>0).sort((a,b)=>a-b);
+ let c=1;const cav=[];const va=vza(lat,lon,M.sub_lon);
+ if(va!=null){if(va>70){c-=.55;cav.push(`very oblique satellite view (${Math.round(va)}°): INSAT/Meteosat needed for this region`)}else if(va>60){c-=.25;cav.push(`oblique satellite view (${Math.round(va)}°)`)}}
+ const age=(Date.now()-Date.parse(M.image_time_utc))/60000;if(age>90){c-=.4;cav.push(`image is ${Math.round(age)} min old`)}else if(age>30){c-=.15;cav.push(`image is ${Math.round(age)} min old`)}
+ const night=fl(F.NIGHT)>.5;if(night){c-=M.has_ir039?.1:.2;cav.push("night: no visible channel")}
+ if((M.tiles[info.k]||{}).from_clim){c-=.15;cav.push("mostly cloudy region: clear-sky reference from climatology")}
+ const hidden=mean(x=>(T.flags[x]&F.CIRRUS)&&(T.flags[x]&F.BASE)?1:0);if(hidden>.2&&!night){c-=.3;cav.push("thick cloud under cirrus: its top is hidden")}
+ if(fl(F.CIRRUS)>.3){if(night){c-=.45;cav.push("night + cirrus: cloud beneath is invisible")}else{c-=.1;cav.push("thin cirrus present")}}
+ if(fl(F.SNOWAMB)>.2){c-=.2;cav.push("snow/cloud ambiguity")}
+ const cloudy=mean(x=>T.pcol[x]>=128?1:0);if(fl(F.UNC)>0&&cloudy>.1&&cloudy<.95){c-=.3;cav.push("broken, low-contrast cloud: score may be one step pessimistic")}
+ if(fl(F.MARG)>.3){c-=.15;cav.push("many marginal cloud detections")}
+ c=Math.max(0,Math.min(1,c));const lab=c>=.75?"HIGH":c>=.5?"MEDIUM":"LOW";const why=[];
+ if(s==1&&lab=="LOW"){s=.5;why.push("data quality too low to confirm CLEAR: capped at 0.5")}
+ why.push(`${Math.round(frac*100)}% of the ${radius/1000} km corridor obscured`);
+ if(cls[2]>.05)why.push(`${Math.round(cls[2]*100)}% of terrain inside cloud`);
+ if(cls[1]>.2)why.push("above a cloud layer: high ground clear, valleys may be blocked");
+ if(cls[3]>.2)why.push("overcast above the terrain (ceiling)");
+ if(fl(F.BASE)>.3)why.push("thick cloud: base not visible from space, assumed to reach the terrain");
+ if(tops.length)why.push(`cloud top ~${tops[tops.length>>1].toLocaleString()} m`);
+ cav.push(`1 km search mode (satellite pixel ~${M.pixel_km} km); key sites have 30 m detail`);
+ return {s,lab,c,frac,cls,top:tops.length?tops[tops.length>>1]:null,z:zc,va,why,cav,cells:v.length}}
+
+/* ---------- overlay ---------- */
+function drawOverlay(T,info){if(!map)return;const n=M.grid.n,cv=document.createElement("canvas");cv.width=n;cv.height=n;const cx=cv.getContext("2d"),im=cx.createImageData(n,n);
+ for(let i=0;i<n;i++)for(let j=0;j<n;j++){const k=i*n+j,o=((n-1-i)*n+j)*4;if(T.flags[k]&F.NODATA){im.data.set([122,122,122,90],o);continue}
+  const a=Math.max(T.obs[k]*.85,T.pcol[k]*.35);im.data.set([255,255,255,a],o)}
+ cx.putImageData(im,0,0);if(overlay)overlay.remove();overlay=L.imageOverlay(cv.toDataURL(),[[info.lat0,info.lon0],[info.lat0+M.grid.tile,info.lon0+M.grid.tile]],{opacity:.9});
+ if($("#ov").checked)overlay.addTo(map)}
+
+/* ---------- pick + render ---------- */
+function err(m){$("#out").innerHTML=`<div class="err">${m}</div>`}
+async function pick(lat,lon,name,doRev){spot={lat,lon,name:name||`${lat.toFixed(4)}, ${lon.toFixed(4)}`};const rad=+$("#rad").value;
+ if(map){map.setView([lat,lon],Math.max(map.getZoom(),10));if(marker)marker.setLatLng([lat,lon]);else{marker=L.marker([lat,lon],{draggable:true}).addTo(map);marker.on("dragend",e=>{const p=e.target.getLatLng();pick(p.lat,p.lng,null,true)})}
+  if(ring)ring.remove();ring=L.circle([lat,lon],{radius:rad,color:"#d6127e",weight:2,fill:false}).addTo(map)}
+ if(!M)return err("Satellite data hasn't loaded yet. Try again in a moment.");
+ const info=tileKey(lat,lon);info.k=info.k;if(!M.tiles[info.k])return err("This point is outside the India coverage, or the latest image had no data for this area.");
+ $("#out").innerHTML='<div class="empty"><span class="spin"></span>Loading satellite tile…</div>';
+ if(doRev)reverse(lat,lon).then(n=>{if(n&&spot&&spot.lat==lat){spot.name=n;const el=$("#pname");if(el)el.textContent=n}});
+ let T;try{T=await loadTile(info.k)}catch(e){return err(esc(e.message))}
+ drawOverlay(T,info);const r=score(T,info,lat,lon,rad),meta=M.tiles[info.k]||{};
+ if(r.none)return err(`No usable satellite data at this point in the latest image (${esc(M.satellite)}). Elevation ${r.z} m.`);
+ const b=r.cls;$("#out").innerHTML=`<p class="place" id="pname">${esc(spot.name)}</p>
+ <div class="meta">${lat.toFixed(4)}, ${lon.toFixed(4)} · terrain ${r.z.toLocaleString()} m · ${esc(PROF[meta.profile]||"")}</div>
+ <div class="stamp" style="background:${COL[r.s]}"><div class="n">${r.s}</div><div><div class="l">${LABEL[r.s]}</div><div class="c">confidence ${r.lab} (${Math.round(r.c*100)}%)</div></div></div>
+ <div class="tiles"><div><b>${Math.round(r.frac*100)}%</b><span>corridor obscured</span></div><div><b>${Math.round(b[2]*100)}%</b><span>terrain in cloud</span></div>
+ <div><b>${r.top?r.top.toLocaleString()+" m":"–"}</b><span>cloud top</span></div><div><b>${Math.round(b[1]*100)}%</b><span>above cloud layer</span></div>
+ <div><b>${Math.round(b[3]*100)}%</b><span>below cloud layer</span></div><div><b>${r.va==null?"–":Math.round(r.va)+"°"}</b><span>satellite view angle</span></div></div>
+ <h2>Why this score</h2><ul>${r.why.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+ <h2>Caveats &amp; data quality</h2><ul>${r.cav.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+ <div class="note">Decision support only. Satellites see cloud tops: cloud base, visibility under cloud, wind, turbulence and icing are not observed. Scores are conservative: when the data can't rule out cloud, the point is scored down. Pilot / aviation met officer decides.</div>`}
+}
+</script>
+</body>
+</html>
