@@ -38,6 +38,20 @@ jobs:
         run: |
           python -m passcast run --satellite himawari --index --out site \
             --only "Nathu La,Sela Pass,Kedarnath Helipad,Rohtang Pass,Kunzum Pass,Zoji La,Khardung La,Shillong Plateau"
+      - name: Summary
+        if: always()
+        run: |
+          python - <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          f = pathlib.Path("site/latest.json")
+          if not f.exists():
+              print("no latest.json"); raise SystemExit
+          d = json.loads(f.read_text())
+          print(f"Image {d['image_time_utc']} · {d['satellite']}\n")
+          for p in d["passes"]:
+              print(f"- {p['name']}: {p['score']} ({p['confidence_label']}) obscured {p['obscured_fraction']:.2f}, "
+                    f"top {p['cloud_top_m']}, classes {p['class_breakdown']} | {'; '.join(p['caveats'][:7])}")
+          PY
       - uses: actions/upload-pages-artifact@v3
         if: always()
         with:
