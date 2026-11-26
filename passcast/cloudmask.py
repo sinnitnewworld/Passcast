@@ -43,6 +43,7 @@ class CloudMaskResult:
     t_ref_sl: float           # clear-sky sea-level reference (K)
     ref_from_climatology: bool
     tests_used: list
+    diag: dict = None
 
 
 def cloud_mask(scene, terrain_z_pix, th: Thresholds) -> CloudMaskResult:
@@ -84,7 +85,10 @@ def cloud_mask(scene, terrain_z_pix, th: Thresholds) -> CloudMaskResult:
     vis, nir = scene.get("vis064"), scene.get("nir16")
     if vis is not None:
         mu = np.cos(np.radians(np.minimum(scene.sza, 85.0)))
-        r = vis / np.maximum(mu, 0.1)                     # crude sun-angle normalisation
+        r = vis / np.maximum(mu, 0.4)                     # crude sun-angle normalisation
+        # Visible/1.6 um tests are only trusted with the sun reasonably high and
+        # the satellite not near its horizon (long hazy slant paths look bright).
+        vis_ok = (scene.sza < 65.0) & ((scene.vza if scene.vza is not None else 0) < 70.0)
         if nir is not None and th.snow_test:
             rn = nir / np.maximum(mu, 0.1)
             ndsi = (r - rn) / np.maximum(r + rn, 1e-3)
@@ -94,8 +98,9 @@ def cloud_mask(scene, terrain_z_pix, th: Thresholds) -> CloudMaskResult:
                     * (1.0 - ramp(deficit, 6.0, 12.0)) * (1.0 - c_ci))
             tests.append("ndsi_snow")
         c_vis = ramp(r, th.vis_cloud_low, th.vis_cloud_high) * (1.0 - snow)
-        c_vis = np.where(night, 0.0, c_vis)
-        opaque = np.where(night, opaque, ramp(r, 0.45, 0.65) * (1.0 - snow))
+        c_vis = np.where(night | ~vis_ok, 0.0, c_vis)
+        snow = np.where(vis_ok, snow, 0.0)
+        opaque = np.where(night | ~vis_ok, opaque, ramp(r, 0.45, 0.65) * (1.0 - snow))
         tests.append("visible_reflectance")
     multilayer = np.where(night, 0.0, c_ci * opaque)
 
@@ -122,6 +127,10 @@ def cloud_mask(scene, terrain_z_pix, th: Thresholds) -> CloudMaskResult:
            + 600.0 * (1.0 - ramp(prob, 0.6, 0.95)))
     unc = np.where(prob >= 0.5, unc, np.nan)
 
+    fin = np.isfinite(ir)
+    frac = lambda a: round(float((np.asarray(a)[fin] > 0.5).mean()), 3) if fin.any() else 0.0
+    diag = {"ir": frac(c_ir_eff), "cirrus": frac(c_ci), "fog": frac(c_fog), "vis": frac(c_vis),
+            "snow": frac(snow), "cloud": frac(prob), "t_ref": round(float(t_ref), 1)}
     f32 = lambda a: np.asarray(a, dtype="float32")
     return CloudMaskResult(f32(prob), f32(cth), f32(unc), f32(snow), f32(c_ci), f32(opaque), f32(multilayer),
-                           night, float(t_ref), bool(from_clim), tests)
+                           night, float(t_ref), bool(from_clim), tests, diag)

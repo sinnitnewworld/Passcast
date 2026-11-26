@@ -146,7 +146,10 @@ def process_tile(scene, lat0, lon0, z, base_th: Thresholds):
     bbox = (lon0, lat0, lon0 + TILE, lat0 + TILE)
     sub = scene.subset(bbox, pad_deg=0.15)
     ir = sub.get("ir108")
-    valid_sat = np.isfinite(ir)
+    geo_ok = np.isfinite(sub.lat) & np.isfinite(sub.lon)
+    valid_sat = np.isfinite(ir) & geo_ok
+    # give off-disk pixels a harmless position far away so geometry code stays finite
+    sub.lat = np.where(geo_ok, sub.lat, -89.0); sub.lon = np.where(geo_ok, sub.lon, 0.0)
     if valid_sat.mean() < 0.05:
         raise ValueError("no valid satellite data over tile")
     # fill off-disk / missing pixels so interpolation is stable; mark them later
@@ -155,6 +158,9 @@ def process_tile(scene, lat0, lon0, z, base_th: Thresholds):
             sub.channels[k] = np.where(np.isfinite(a), a, np.nanmedian(a)).astype("float32")
     z_pix = terrain_under_pixels(sub, dem)
     cm = cloud_mask(sub, z_pix, th)
+    # drop invalid / off-disk pixels from the interpolation entirely
+    for name in ("prob", "cth_m", "cth_unc_m", "snow", "cirrus", "opaque", "multilayer"):
+        setattr(cm, name, np.where(valid_sat, getattr(cm, name), np.nan).astype("float32"))
     field = downscale(sub, cm, dem, z_pix, th)
     obs = obscuration(field, th)
 
@@ -162,11 +168,12 @@ def process_tile(scene, lat0, lon0, z, base_th: Thresholds):
     from scipy.spatial import cKDTree
     LON, LAT = dem.mesh()
     kx = math.cos(math.radians(lat0 + TILE / 2))
-    tree = cKDTree(np.column_stack([sub.lon.ravel() * kx, sub.lat.ravel()]))
+    vflat = valid_sat.ravel()
+    pts = np.column_stack([sub.lon.ravel() * kx, sub.lat.ravel()])[vflat]
+    tree = cKDTree(pts)
     dist, idx = tree.query(np.column_stack([LON.ravel() * kx, LAT.ravel()]))
-    far = dist.reshape(LON.shape) > 2.5 * sub.pixel_km / 111.0      # outside the image
-    nodata = far | ~valid_sat.ravel()[idx].reshape(LON.shape)
-    night_cells = cm.night.ravel()[idx].reshape(LON.shape)
+    nodata = (dist > 2.5 * sub.pixel_km / 111.0).reshape(LON.shape)   # outside the image / off-disk
+    night_cells = cm.night.ravel()[vflat][idx].reshape(LON.shape)
     pcol = field.prob_column
     flags = np.zeros(z.shape, "uint8")
     flags |= np.where(night_cells, FLAG_NIGHT, 0).astype("uint8")
@@ -187,7 +194,7 @@ def process_tile(scene, lat0, lon0, z, base_th: Thresholds):
         "cth": np.clip(cth, 0, 65000).astype("<u2"),
     }
     meta = {"profile": prof, "t_ref": round(cm.t_ref_sl, 1), "from_clim": cm.ref_from_climatology,
-            "valid": round(float(1 - nodata.mean()), 3)}
+            "valid": round(float(1 - nodata.mean()), 3), "tests": cm.diag}
     return rec, meta
 
 
@@ -232,7 +239,7 @@ def run_national(scene, sat_key, outdir, th: Thresholds | None = None, terrain=N
             ok = (rec["flags"] & FLAG_NODATA) == 0
             cloudy = float((rec["pcol"][ok] >= 128).mean()) if ok.any() else 0.0
             meta["cloudy"] = round(cloudy, 3)
-            print(f"  tile {k}: {meta['profile']:<13} valid {meta['valid']:.0%}  cloudy {cloudy:.0%}")
+            print(f"  tile {k}: {meta['profile']:<13} valid {meta['valid']:.0%}  cloudy {cloudy:.0%}  tests {meta['tests']}")
         except Exception as e:
             print(f"  tile {k}: skipped ({type(e).__name__}: {e})")
     manifest["processing_s"] = round(time.time() - t0, 1)

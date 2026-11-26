@@ -65,7 +65,7 @@ def terrain_under_pixels(scene, dem: DEMGrid, iterations=2):
 
 
 def _interp(points, values, targets, method="cubic"):
-    ok = np.isfinite(values)
+    ok = np.isfinite(values) & np.isfinite(points).all(axis=1)   # off-disk pixels have NaN lat/lon
     if ok.sum() < 4:
         return np.full(targets[0].shape, np.nan, dtype="float32")
     pts, vals = points[ok], values[ok]
@@ -101,6 +101,7 @@ def downscale(scene, cm, dem: DEMGrid, z_pix, th: Thresholds,
     unc = _interp(pts, cm.cth_unc_m.ravel(), tgt, "linear")
     unc = np.where(np.isfinite(unc), unc, th.cloud_top_sigma_m)
     snow = np.clip(_interp(pts, cm.snow.ravel(), tgt, "linear"), 0, 1)
+    snow = np.nan_to_num(snow)
     cirrus = np.clip(_interp(pts, cm.cirrus.ravel(), tgt, "linear"), 0, 1)
     opaque = np.clip(_interp(pts, cm.opaque.ravel(), tgt, "linear"), 0, 1)
     multi = np.clip(_interp(pts, cm.multilayer.ravel(), tgt, "linear"), 0, 1)
