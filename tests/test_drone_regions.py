@@ -121,3 +121,22 @@ def test_terrain90_roundtrip():
     rng = np.random.default_rng(0)
     z = (3000 + np.cumsum(rng.integers(-30, 31, (1200, 1200)), axis=1)).clip(-400, 8800).astype("int16")
     assert (decode90(encode90(z)) == z).all()
+
+
+def test_events_rss_parse_and_filter():
+    import datetime as dt, email.utils
+    from passcast.events import parse_rss, scan
+    now = email.utils.format_datetime(dt.datetime.now(dt.timezone.utc))
+    old = email.utils.format_datetime(dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=9))
+    rss = f"""<rss><channel>
+      <item><title>Pune police declare temporary red zone for drones ahead of VP visit - Punekar News</title><link>https://x/1</link><pubDate>{now}</pubDate><source url="https://p">Punekar News</source></item>
+      <item><title>Pune traffic jam on Sunday - ABC</title><link>https://x/2</link><pubDate>{now}</pubDate><source url="https://a">ABC</source></item>
+      <item><title>Old drone ban in Delhi - XYZ</title><link>https://x/3</link><pubDate>{old}</pubDate><source url="https://z">XYZ</source></item>
+    </channel></rss>"""
+    got = parse_rss(rss, "ban")
+    assert [g["title"] for g in got][:1] == ["Pune police declare temporary red zone for drones ahead of VP visit"]
+    assert all("traffic jam" not in g["title"] for g in got)          # ban items must mention drones
+    res = scan(fetch=lambda u: rss)
+    titles = [i["title"] for i in res["items"]]
+    assert "Old drone ban in Delhi" not in titles                     # older than 72 h dropped
+    assert len(titles) == len(set(titles))                            # de-duplicated across queries

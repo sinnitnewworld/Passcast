@@ -52,6 +52,9 @@ jobs:
             --only "Nathu La,Sela Pass,Kedarnath Helipad,Rohtang Pass,Kunzum Pass,Zoji La,Khardung La,Shillong Plateau"
       - name: All-India 1 km tiles + search page
         run: python -m passcast national --satellite himawari --time "$SLOT" --out site
+      - name: Drone-caution events (news scan)
+        continue-on-error: true
+        run: python -m passcast events --out site
       - name: Probe browser access to 30 m terrain (CORS)
         continue-on-error: true
         run: |

@@ -216,6 +216,11 @@ def _live_check(a, name, lat, lon):
             f"confidence {r.confidence_label.lower()}), image {scene.time:%H:%M} UTC")
 
 
+def cmd_events(a):
+    from .events import write
+    write(a.out)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="passcast", description="Flyability across India from satellite cloud imagery, plus a drone flight planner")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -250,8 +255,10 @@ def main(argv=None):
     na.add_argument("--satellite", default="himawari", choices=list(SATELLITES))
     na.add_argument("--files"); na.add_argument("--time"); na.add_argument("--config")
     na.add_argument("--out", default="site")
+    ev = sub.add_parser("events", help="scan public news for drone bans, announced VIP visits, air shows and crowds")
+    ev.add_argument("--out", default="site")
     a = ap.parse_args(argv)
-    {"demo": cmd_demo, "run": cmd_run, "region": cmd_region, "drone": cmd_drone, "national": cmd_national}[a.cmd](a)
+    {"demo": cmd_demo, "run": cmd_run, "region": cmd_region, "drone": cmd_drone, "national": cmd_national, "events": cmd_events}[a.cmd](a)
 
 
 if __name__ == "__main__":
