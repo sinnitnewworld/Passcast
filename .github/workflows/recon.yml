@@ -1,0 +1,23 @@
+name: recon digital sky
+on:
+  push:
+    branches: [recon-ds]
+jobs:
+  look:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Find the public airspace-map data endpoints
+        run: |
+          set +e
+          for base in https://digitalsky.aai.aero https://digitalsky.dgca.gov.in; do
+            echo "=== $base"
+            curl -sL -m 30 -A "Mozilla/5.0" "$base/" -o page.html -w "HTTP %{http_code} %{url_effective}\n"
+            grep -oE '(src|href)="[^"]+\.(js|json)[^"]*"' page.html | head -20
+            for js in $(grep -oE 'src="[^"]+\.js[^"]*"' page.html | sed 's/src="//;s/"$//' | head -12); do
+              case "$js" in http*) u="$js";; /*) u="$base$js";; *) u="$base/$js";; esac
+              curl -sL -m 30 -A "Mozilla/5.0" "$u" -o b.js
+              echo "--- $u ($(wc -c < b.js) bytes)"
+              grep -oE '"(https?:)?//[^" ]{4,120}"|"/[a-zA-Z0-9_/-]*(api|zone|airspace|map|geo|wms|wfs|layer)[a-zA-Z0-9_/.-]*"' b.js | sort -u | head -60
+            done
+          done
