@@ -2,7 +2,7 @@ name: PassCast live
 
 on:
   schedule:
-    - cron: "7,37 * * * *"      # every 30 min (GitHub may delay scheduled runs)
+    - cron: "7,37 * * * *"      # every 30 min - Nitin
   workflow_dispatch:             # "Run workflow" button for a manual refresh
   push:
     branches: [main]             # also refresh whenever the code changes
